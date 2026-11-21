@@ -18,7 +18,6 @@ import (
 	"music/likes"
 	"music/media"
 	"music/tracks"
-	"music/venues"
 	"music/videos"
 )
 
@@ -36,7 +35,7 @@ func testExtensions(t *testing.T, pool *pgxpool.Pool) *Extensions {
 		Queue:   media.NewQueue(1, slog.New(slog.NewTextHandler(io.Discard, nil))),
 		FFErr:   ff.Check(),
 	}
-	return &Extensions{Media: m, Videos: videos.NewService(pool, m), Tracks: tracks.NewService(pool, m), Venues: venues.NewStore(pool), Likes: likes.NewService(pool, nil)}
+	return &Extensions{Media: m, Videos: videos.NewService(pool, m), Tracks: tracks.NewService(pool, m), Likes: likes.NewService(pool, nil)}
 }
 
 func requireDB(t *testing.T) (*Server, *fakeSMS, *pgxpool.Pool) {
@@ -225,43 +224,6 @@ func TestBandsSpotsResponses(t *testing.T) {
 	if jsonBody(t, rec)["status"] != "closed" {
 		t.Fatal("spot must be closed")
 	}
-}
-
-func TestVenues(t *testing.T) {
-	s, sms, pool := requireDB(t)
-	c, _ := login(t, s, sms, "89274440007")
-	expect(t, do(s, "PATCH", "/me", fullProfile, c), 200, "")
-
-	dbExec(t, pool, `INSERT INTO venues (id, name, type, address, location, equipment, price_per_hour_min, price_per_hour_max, opening_hours, status) VALUES
-		('55555555-5555-4555-8555-555555555555', 'Подвал', 'rehearsal', 'ул. Московская', ST_SetSRID(ST_MakePoint(46.03, 51.53), 4326)::geography,
-		 ARRAY['drums','bass_amp'], 500, 700, '{"mon":["00:00-24:00"],"tue":["00:00-24:00"],"wed":["00:00-24:00"],"thu":["00:00-24:00"],"fri":["00:00-24:00"],"sat":["00:00-24:00"],"sun":["00:00-24:00"]}', 'published'),
-		('66666666-6666-4666-8666-666666666666', 'Студия', 'studio', 'ул. Рахова', ST_SetSRID(ST_MakePoint(46.01, 51.55), 4326)::geography,
-		 ARRAY[]::text[], 1500, 2000, '{}', 'published'),
-		('77777777-7777-4777-8777-777777777777', 'Черновик', 'rehearsal', 'ул. Чапаева', ST_SetSRID(ST_MakePoint(46.02, 51.54), 4326)::geography,
-		 ARRAY['drums'], 300, 300, '{}', 'draft')`)
-
-	count := func(q string) int {
-		rec := do(s, "GET", "/venues"+q, "", c)
-		expect(t, rec, 200, "")
-		return len(jsonBody(t, rec)["items"].([]any))
-	}
-	cases := map[string]int{"": 2, "?has_drums=1": 1, "?type=studio": 1, "?price_max=1000": 1, "?price_min=1000": 1,
-		"?open_now=1": 1, "?has_backline=1": 1, "?bbox=46.02,51.52,46.04,51.54": 1}
-	for q, want := range cases {
-		if got := count(q); got != want {
-			t.Errorf("venues%s: got %d, want %d", q, got, want)
-		}
-	}
-
-	rec := do(s, "GET", "/venues/55555555-5555-4555-8555-555555555555", "", c)
-	expect(t, rec, 200, "")
-	if b := jsonBody(t, rec); b["open_now"] != true || b["lat"].(float64) < 51.5 {
-		t.Fatalf("venue: %v", b)
-	}
-	expect(t, do(s, "GET", "/venues/77777777-7777-4777-8777-777777777777", "", c), 404, "not_found")
-	expect(t, do(s, "POST", "/venues/55555555-5555-4555-8555-555555555555/report", `{"message":"Цена 800"}`, c), 200, "")
-	expect(t, do(s, "POST", "/venues/suggest", `{"name":"Гараж","address":""}`, c), 400, "invalid")
-	expect(t, do(s, "POST", "/venues/suggest", `{"name":"Гараж","address":"ул. Огородная"}`, c), 200, "")
 }
 
 func TestLikesAndMatches(t *testing.T) {

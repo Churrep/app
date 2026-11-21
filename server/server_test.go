@@ -60,7 +60,7 @@ func newTestServer(t *testing.T) (*Server, *fakeSMS) {
 		if err := db.Migrate(ctx, pool); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := pool.Exec(ctx, `TRUNCATE users, bands, venues CASCADE`); err != nil {
+		if _, err := pool.Exec(ctx, `TRUNCATE users, bands CASCADE`); err != nil {
 			t.Fatal(err)
 		}
 		users, sessions = profile.NewPostgresStore(pool), auth.NewPostgresSessions(pool)

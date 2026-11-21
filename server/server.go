@@ -18,7 +18,6 @@ import (
 	"music/profile"
 	"music/push"
 	"music/tracks"
-	"music/venues"
 	"music/videos"
 )
 
@@ -48,7 +47,6 @@ type Extensions struct {
 	Media  *media.Media
 	Videos *videos.Service
 	Tracks *tracks.Service
-	Venues *venues.Store
 	Likes  *likes.Service
 	Push   *push.Service
 }

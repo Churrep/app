@@ -5,7 +5,7 @@ import (
 	_ "time/tzdata" // часовые пояса внутри бинарника: в минимальных контейнерах их нет
 )
 
-// Saratov — часовой пояс приложения (UTC+4): сроки, «открыто сейчас».
+// Saratov — часовой пояс приложения (UTC+4).
 var Saratov = func() *time.Location {
 	loc, err := time.LoadLocation("Europe/Saratov")
 	if err != nil {

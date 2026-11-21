@@ -1,8 +1,7 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { OfflineBanner } from './components/OfflineBanner'
 import { TabsLayout } from './components/TabsLayout'
-import { FullLoading } from './components/States'
 import { Feed } from './screens/Feed'
 import { ChatMock, Chats, Likes } from './screens/Chats'
 import { Record } from './screens/Record'
@@ -16,9 +15,6 @@ import { Privacy } from './screens/Privacy'
 import { Settings } from './screens/Settings'
 import { UserProfile } from './screens/UserProfile'
 import { SessionProvider, useSession } from './session'
-
-// Карта тяжёлая (MapLibre) — грузим, только когда её открыли.
-const MapScreen = lazy(() => import('./screens/MapScreen'))
 
 function GuestOnly({ children }: { children: ReactNode }) {
   const { me } = useSession()
@@ -51,7 +47,6 @@ export default function App() {
           <Route element={<RequireOnboarded><TabsLayout /></RequireOnboarded>}>
             <Route path="/feed" element={<Feed />} />
             <Route path="/tracks" element={<Tracks />} />
-            <Route path="/map" element={<Suspense fallback={<FullLoading />}><MapScreen /></Suspense>} />
             <Route path="/chats" element={<Chats />} />
             <Route path="/me" element={<MeScreen />} />
           </Route>

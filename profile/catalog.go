@@ -84,26 +84,9 @@ var VideoTags = []Item{
 	{"cover", "Кавер"},
 }
 
-var VenueTypes = []Item{
-	{"rehearsal", "Репбаза"},
-	{"studio", "Студия записи"},
-	{"school", "Музыкальная школа"},
-	{"open_mic", "Бар с открытым микрофоном"},
-	{"free", "Бесплатная площадка"},
-}
-
-var Equipment = []Item{
-	{"drums", "Барабаны"},
-	{"bass_amp", "Бас-комбик"},
-	{"guitar_amp", "Гитарные комбики"},
-	{"vocal_pa", "Вокальная линия"},
-	{"keys", "Клавиши"},
-}
-
 func IsInstrument(id string) bool { return has(Instruments, id) }
 func IsGenre(id string) bool      { return has(Genres, id) }
 func IsVideoTag(id string) bool   { return has(VideoTags, id) }
-func IsVenueType(id string) bool  { return has(VenueTypes, id) }
 
 func LevelDescription(level int) string {
 	for _, l := range Levels {

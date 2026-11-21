@@ -55,8 +55,6 @@ export type Catalog = {
   city: string
   max_genres: number
   video_tags: Item[]
-  venue_types: Item[]
-  equipment: Item[]
 }
 
 export type Video = {
@@ -127,27 +125,6 @@ export type SpotResponse = {
   created_at: string
   author?: Author
   spot?: Spot
-}
-
-export type Venue = {
-  id: string
-  name: string
-  type: string
-  address: string
-  lat: number
-  lon: number
-  district: string
-  price_min: number | null
-  price_max: number | null
-  opening_hours: Record<string, string[]>
-  open_now: boolean | null
-  rooms_count: number | null
-  equipment: string[]
-  phones: string[]
-  telegram: string
-  website: string
-  photos: string[]
-  verified_at: string | null
 }
 
 export type MePatch = Partial<{

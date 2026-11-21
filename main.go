@@ -20,7 +20,6 @@ import (
 	"music/push"
 	"music/server"
 	"music/tracks"
-	"music/venues"
 	"music/videos"
 )
 
@@ -80,7 +79,6 @@ func main() {
 			Media:  m,
 			Videos: videos.NewService(pool, m),
 			Tracks: tracks.NewService(pool, m),
-			Venues: venues.NewStore(pool),
 		}
 		keys, err := push.LoadKeys(filepath.Join(m.Storage.Dir, ".vapid.json"))
 		if err != nil {

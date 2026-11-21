@@ -13,7 +13,6 @@ import (
 	"music/media"
 	"music/profile"
 	"music/tracks"
-	"music/venues"
 	"music/videos"
 )
 
@@ -42,10 +41,6 @@ func (s *Server) routesExt(m *http.ServeMux) {
 	m.HandleFunc("PATCH /responses/{id}", s.withExt(s.withOnboarded(s.handlePatchResponse)))
 	m.HandleFunc("GET /me/responses", s.withExt(s.withOnboarded(s.handleMyResponses)))
 
-	m.HandleFunc("GET /venues", s.withExt(s.withOnboarded(s.handleListVenues)))
-	m.HandleFunc("GET /venues/{id}", s.withExt(s.withOnboarded(s.handleGetVenue)))
-	m.HandleFunc("POST /venues/suggest", s.withExt(s.withOnboarded(s.handleSuggestVenue)))
-	m.HandleFunc("POST /venues/{id}/report", s.withExt(s.withOnboarded(s.handleReportVenue)))
 	s.routesLikes(m)
 }
 
@@ -579,109 +574,4 @@ func (s *Server) handleMyResponses(w http.ResponseWriter, r *http.Request, u pro
 		out[i] = s.responseView(resp)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
-}
-
-// ---------- Точки ----------
-
-type venueView struct {
-	ID           string       `json:"id"`
-	Name         string       `json:"name"`
-	Type         string       `json:"type"`
-	Address      string       `json:"address"`
-	Lat          float64      `json:"lat"`
-	Lon          float64      `json:"lon"`
-	District     string       `json:"district"`
-	PriceMin     *int         `json:"price_min"`
-	PriceMax     *int         `json:"price_max"`
-	OpeningHours venues.Hours `json:"opening_hours"`
-	OpenNow      *bool        `json:"open_now"`
-	RoomsCount   *int         `json:"rooms_count"`
-	Equipment    []string     `json:"equipment"`
-	Phones       []string     `json:"phones"`
-	Telegram     string       `json:"telegram"`
-	Website      string       `json:"website"`
-	Photos       []string     `json:"photos"`
-	VerifiedAt   *time.Time   `json:"verified_at"`
-}
-
-func (s *Server) venueView(v venues.Venue) venueView {
-	out := venueView{v.ID, v.Name, v.Type, v.Address, v.Lat, v.Lon, v.District, v.PriceMin, v.PriceMax, v.OpeningHours,
-		nil, v.RoomsCount, v.Equipment, v.Phones, v.Telegram, v.Website, v.Photos, v.VerifiedAt}
-	if open, known := v.OpeningHours.OpenAt(s.now()); known {
-		out.OpenNow = &open
-	}
-	return out
-}
-
-func (s *Server) handleListVenues(w http.ResponseWriter, r *http.Request, _ profile.User) {
-	q := r.URL.Query()
-	f := venues.Filter{HasDrums: q.Get("has_drums") == "1", HasBackline: q.Get("has_backline") == "1", OpenNow: q.Get("open_now") == "1"}
-	if t := q.Get("type"); t != "" {
-		for _, typ := range strings.Split(t, ",") {
-			if profile.IsVenueType(typ) {
-				f.Types = append(f.Types, typ)
-			}
-		}
-	}
-	f.PriceMin, _ = strconv.Atoi(q.Get("price_min"))
-	f.PriceMax, _ = strconv.Atoi(q.Get("price_max"))
-	if b := strings.Split(q.Get("bbox"), ","); len(b) == 4 {
-		for _, x := range b {
-			v, err := strconv.ParseFloat(x, 64)
-			if err != nil {
-				f.BBox = nil
-				break
-			}
-			f.BBox = append(f.BBox, v)
-		}
-	}
-	list, err := s.ext.Venues.List(r.Context(), f, s.now())
-	if err != nil {
-		s.fail(w, "list venues", err)
-		return
-	}
-	out := make([]venueView, len(list))
-	for i, v := range list {
-		out[i] = s.venueView(v)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": out})
-}
-
-func (s *Server) handleGetVenue(w http.ResponseWriter, r *http.Request, _ profile.User) {
-	v, err := s.ext.Venues.Get(r.Context(), r.PathValue("id"))
-	if err != nil {
-		s.fail(w, "get venue", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, s.venueView(v))
-}
-
-func (s *Server) handleSuggestVenue(w http.ResponseWriter, r *http.Request, u profile.User) {
-	var req struct {
-		Name    string `json:"name"`
-		Address string `json:"address"`
-		Message string `json:"message"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := s.ext.Venues.Feedback(r.Context(), u.ID, "suggest", "", req.Name, req.Address, req.Message); err != nil {
-		s.fail(w, "suggest venue", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Спасибо! Проверим и добавим на карту"})
-}
-
-func (s *Server) handleReportVenue(w http.ResponseWriter, r *http.Request, u profile.User) {
-	var req struct {
-		Message string `json:"message"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := s.ext.Venues.Feedback(r.Context(), u.ID, "error", r.PathValue("id"), "", "", req.Message); err != nil {
-		s.fail(w, "report venue", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Спасибо, проверим"})
 }

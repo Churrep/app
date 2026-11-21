@@ -177,7 +177,7 @@ export function ChatMock() {
   if (error) return <main className="screen"><Header back /><ErrorState error={error} onRetry={reload} /></main>
   if (!m) return <main className="screen"><Header back /><Loading /></main>
 
-  const draft = params.get('jam') ? `Привет! Давай сыграем вместе? Можно встретиться на репточке — посмотри карту в приложении.` : ''
+  const draft = params.get('jam') ? `Привет! Давай сыграем вместе?` : ''
   return (
     <main className="screen chat-screen">
       <header className="header">

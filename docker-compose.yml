@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgis/postgis:17-3.5
+    image: ${POSTGRES_IMAGE:-postgres:17}
     environment:
       POSTGRES_USER: music
       POSTGRES_PASSWORD: music

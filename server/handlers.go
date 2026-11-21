@@ -24,8 +24,6 @@ func (s *Server) handleCatalog(w http.ResponseWriter, _ *http.Request) {
 		"city":        profile.City,
 		"max_genres":  profile.MaxGenres,
 		"video_tags":  profile.VideoTags,
-		"venue_types": profile.VenueTypes,
-		"equipment":   profile.Equipment,
 	})
 }
 

@@ -19,9 +19,6 @@ export const FeedIcon = (p: SVGProps<SVGSVGElement>) => (
 export const TracksIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M4 10v4M8 6v12M12 3v18M16 8v8M20 11v2" /></svg>
 )
-export const MapIcon = (p: SVGProps<SVGSVGElement>) => (
-  <svg {...base(p)}><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
-)
 export const ChatsIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg>
 )

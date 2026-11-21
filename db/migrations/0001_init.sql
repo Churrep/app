@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS postgis;
-
 CREATE TABLE users (
     id                     uuid PRIMARY KEY,
     phone                  text,
@@ -176,43 +174,3 @@ CREATE TABLE spot_responses (
     UNIQUE (spot_id, user_id)
 );
 CREATE INDEX spot_responses_user_idx ON spot_responses (user_id, created_at DESC);
-
--- ---------- Карта ----------
-
--- Репетиционные точки Саратова.
-CREATE TABLE venues (
-    id                 uuid PRIMARY KEY,
-    name               text                   NOT NULL,
-    type               text                   NOT NULL CHECK (type IN ('rehearsal', 'studio', 'school', 'open_mic', 'free')),
-    address            text                   NOT NULL,
-    location           geography(Point, 4326) NOT NULL,
-    district           text                   NOT NULL DEFAULT '',
-    price_per_hour_min int,
-    price_per_hour_max int,
-    opening_hours      jsonb                  NOT NULL DEFAULT '{}',
-    rooms_count        smallint,
-    equipment          text[]                 NOT NULL DEFAULT '{}',
-    phones             text[]                 NOT NULL DEFAULT '{}',
-    telegram           text                   NOT NULL DEFAULT '',
-    website            text                   NOT NULL DEFAULT '',
-    photos             text[]                 NOT NULL DEFAULT '{}',
-    verified_at        timestamptz,
-    status             text                   NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'hidden')),
-    created_by         uuid                   REFERENCES users (id) ON DELETE SET NULL,
-    created_at         timestamptz            NOT NULL DEFAULT now(),
-    updated_at         timestamptz            NOT NULL DEFAULT now()
-);
-CREATE INDEX venues_location_idx ON venues USING gist (location);
-
--- Предложения новых точек и сообщения об ошибках — на модерацию.
-CREATE TABLE venue_feedback (
-    id         uuid PRIMARY KEY,
-    kind       text        NOT NULL CHECK (kind IN ('suggest', 'error')),
-    venue_id   uuid        REFERENCES venues (id) ON DELETE CASCADE,
-    user_id    uuid        REFERENCES users (id) ON DELETE SET NULL,
-    name       text        NOT NULL DEFAULT '',
-    address    text        NOT NULL DEFAULT '',
-    message    text        NOT NULL,
-    status     text        NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'done', 'rejected')),
-    created_at timestamptz NOT NULL DEFAULT now()
-);

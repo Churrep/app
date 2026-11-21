@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { onNewLike, refreshIncoming, useIncomingCount } from '../lib/incoming'
-import { ChatsIcon, FeedIcon, MapIcon, MeIcon, TracksIcon } from './Icons'
+import { ChatsIcon, FeedIcon, MeIcon, TracksIcon } from './Icons'
 
 const tabs = [
   { to: '/feed', label: 'Лента', Icon: FeedIcon },
   { to: '/tracks', label: 'Дорожки', Icon: TracksIcon },
-  { to: '/map', label: 'Карта', Icon: MapIcon },
   { to: '/chats', label: 'Чаты', Icon: ChatsIcon },
   { to: '/me', label: 'Я', Icon: MeIcon },
 ]
