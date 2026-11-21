@@ -4,7 +4,7 @@ import { OfflineBanner } from './components/OfflineBanner'
 import { AudioCalibration } from './screens/AudioCalibration'
 import { TabsLayout } from './components/TabsLayout'
 import { Feed } from './screens/Feed'
-import { Matches, Likes } from './screens/Matches'
+import { Invites, Matches } from './screens/Matches'
 import { Record } from './screens/Record'
 import { RecordTrack } from './screens/RecordTrack'
 import { NewSpot, SpotScreen, Tracks } from './screens/Tracks'
@@ -55,7 +55,8 @@ export default function App() {
           <Route path="/me/settings" element={<RequireOnboarded><Settings /></RequireOnboarded>} />
           <Route path="/me/settings/audio" element={<RequireOnboarded><AudioCalibration /></RequireOnboarded>} />
           <Route path="/users/:id" element={<RequireOnboarded><UserProfile /></RequireOnboarded>} />
-          <Route path="/likes" element={<RequireOnboarded><Likes /></RequireOnboarded>} />
+          <Route path="/invites" element={<RequireOnboarded><Invites /></RequireOnboarded>} />
+          <Route path="/likes" element={<Navigate to="/invites" replace />} />
           <Route path="/record" element={<RequireOnboarded><Record /></RequireOnboarded>} />
           <Route path="/tracks/new" element={<RequireOnboarded><NewSpot /></RequireOnboarded>} />
           <Route path="/tracks/:id" element={<RequireOnboarded><SpotScreen /></RequireOnboarded>} />

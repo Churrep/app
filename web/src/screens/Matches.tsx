@@ -8,7 +8,7 @@ import { Empty, ErrorState, Loading } from '../components/States'
 import { AudioCover, instrumentName } from '../components/VideoBits'
 import { refreshIncoming, useIncomingCount } from '../lib/incoming'
 import { useMe } from '../session'
-import type { IncomingLike, LikeResult, Match } from '../types'
+import type { IncomingInvite, InviteResult, Match } from '../types'
 import { fmtAgo, nameOf } from '../types'
 
 function useLoad<T>(path: string) {
@@ -35,16 +35,16 @@ export function Matches() {
     <main className="screen">
       <Header title="Совпадения" />
       <div className="screen-body">
-        <Link to="/likes" className="card likes-entry">
-          <strong>Тебя лайкнули · {incoming}</strong>
-          <span className="small muted">{incoming ? 'Посмотри, кто хочет с тобой поиграть' : 'Пока никого — запиши видео, чтобы тебя заметили'}</span>
+        <Link to="/invites" className="card likes-entry">
+          <strong>Хотят поиграть · {incoming}</strong>
+          <span className="small muted">{incoming ? 'Посмотри, кто предложил тебе поиграть' : 'Пока никого — запиши видео, чтобы тебя заметили'}</span>
         </Link>
         {error ? <ErrorState error={error} onRetry={reload} /> : !data ? <Loading /> : data.items.length === 0 ? (
-          <Empty title="Совпадений пока нет" text="Когда кто-то захочет с тобой поиграть и ты ответишь тем же, здесь появится его профиль." />
+          <Empty title="Совпадений пока нет" text="Нажми «Хочу поиграть» в профиле музыканта. Когда он ответит тем же, здесь появится его профиль." />
         ) : (
           <ul className="match-list">
             {data.items.map((m) => (
-              <li key={m.id}>
+              <li key={m.other.id}>
                 <Link to={`/users/${m.other.id}`} className="match-row">
                   <Avatar name={m.other.name} url={m.other.photo_url} size={52} />
                   <span className="match-row-main">
@@ -61,24 +61,25 @@ export function Matches() {
   )
 }
 
-export function Likes() {
+// Invites — входящие «Хочу поиграть»: можно ответить взаимностью или скрыть («Не сейчас»).
+export function Invites() {
   const { catalog } = useMe()
   const navigate = useNavigate()
-  const { data, error, reload } = useLoad<{ items: IncomingLike[] }>('/likes/incoming')
+  const { data, error, reload } = useLoad<{ items: IncomingInvite[] }>('/invites/incoming')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState('')
   const [actionError, setActionError] = useState('')
-  const [match, setMatch] = useState<IncomingLike['author'] | null>(null)
+  const [match, setMatch] = useState<IncomingInvite['author'] | null>(null)
 
-  async function act(item: IncomingLike, kind: 'like' | 'dismiss') {
+  async function act(item: IncomingInvite, kind: 'invite' | 'dismiss') {
     setBusy(item.author.id)
     setActionError('')
     try {
-      if (kind === 'like') {
-        const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: item.author.id } })
-        if (r.matched) setMatch(item.author)
+      if (kind === 'invite') {
+        const r = await api<InviteResult>('/invites', { method: 'POST', body: { to_user_id: item.author.id } })
+        if (r.mutual) setMatch(item.author)
       } else {
-        await api(`/likes/incoming/${item.author.id}/dismiss`, { method: 'POST' })
+        await api(`/invites/incoming/${item.author.id}/dismiss`, { method: 'POST' })
       }
       setHidden((h) => new Set(h).add(item.author.id))
       refreshIncoming()
@@ -92,11 +93,11 @@ export function Likes() {
   const items = data?.items.filter((i) => !hidden.has(i.author.id)) ?? []
   return (
     <main className="screen">
-      <Header title="Тебя лайкнули" back />
+      <Header title="Хотят поиграть" back />
       <div className="screen-body">
         {actionError && <p className="error-text">{actionError}</p>}
         {error ? <ErrorState error={error} onRetry={reload} /> : !data ? <Loading /> : items.length === 0 ? (
-          <Empty title="Пока никого" text="Когда кто-то нажмёт «Хочу поиграть» на твоём видео, он появится здесь." />
+          <Empty title="Пока никого" text="Когда кто-то нажмёт «Хочу поиграть» в твоём профиле, он появится здесь. Лайки записей сюда не попадают." />
         ) : items.map((it) => {
           const inst = instrumentName(catalog, it.author.main_instrument)
           return (
@@ -111,11 +112,11 @@ export function Likes() {
                   <strong>{it.author.name}</strong>
                   <span className="small">{inst} · {it.author.level}/5</span>
                   <span className="small muted">{it.author.genres.map((g) => nameOf(catalog.genres, g)).join(', ')}</span>
-                  <span className="small muted">{fmtAgo(it.liked_at)}</span>
+                  <span className="small muted">{fmtAgo(it.invited_at)}</span>
                 </span>
               </button>
               <div className="row">
-                <button className="btn btn-primary" disabled={busy === it.author.id} onClick={() => act(it, 'like')}>Хочу поиграть в ответ</button>
+                <button className="btn btn-primary" disabled={busy === it.author.id} onClick={() => act(it, 'invite')}>Хочу поиграть в ответ</button>
                 <button className="btn btn-secondary" disabled={busy === it.author.id} onClick={() => act(it, 'dismiss')}>Не сейчас</button>
               </div>
             </div>

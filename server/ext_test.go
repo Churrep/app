@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -240,78 +241,145 @@ func TestBandsSpotsResponses(t *testing.T) {
 	}
 }
 
-func TestLikesAndMatches(t *testing.T) {
+func TestVideoLikesAndInvites(t *testing.T) {
 	s, sms, pool := requireDB(t)
-	a, aID := login(t, s, sms, "89275550001")
-	expect(t, do(s, "PATCH", "/me", fullProfile, a), 200, "")
-	b, bID := login(t, s, sms, "89275550002")
-	expect(t, do(s, "PATCH", "/me", fullProfile, b), 200, "")
-	dbExec(t, pool, `INSERT INTO videos (id, user_id, type, tag, media_key, status, recorded_at) VALUES
-		('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', $1, 'video', 'own', 'videos/b.mp4', 'ready', now())`, bID)
+	anya, anyaID := login(t, s, sms, "89275550001")
+	expect(t, do(s, "PATCH", "/me", fullProfile, anya), 200, "")
+	boris, borisID := login(t, s, sms, "89275550002")
+	expect(t, do(s, "PATCH", "/me", fullProfile, boris), 200, "")
+	const v1, v2 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	dbExec(t, pool, `INSERT INTO videos (id, user_id, type, tag, media_key, status, recorded_at, created_at) VALUES
+		($2, $1, 'video', 'own', 'videos/1.mp4', 'ready', now(), now() - interval '1 hour'),
+		($3, $1, 'video', 'own', 'videos/2.mp4', 'ready', now(), now())`, borisID, v1, v2)
 
-	expect(t, do(s, "POST", "/likes", `{"to_user_id":"`+aID+`"}`, a), 400, "invalid")
-	if n := len(jsonBody(t, do(s, "GET", "/feed", "", a))["items"].([]any)); n != 1 {
-		t.Fatalf("feed before like: %d", n)
+	feedLiked := func(c *http.Cookie) map[string]bool {
+		out := map[string]bool{}
+		for _, it := range jsonBody(t, do(s, "GET", "/feed", "", c))["items"].([]any) {
+			m := it.(map[string]any)
+			out[m["video"].(map[string]any)["id"].(string)] = m["liked"].(bool)
+		}
+		return out
+	}
+	incoming := func(c *http.Cookie) int {
+		return int(jsonBody(t, do(s, "GET", "/invites/incoming/count", "", c))["count"].(float64))
 	}
 
-	rec := do(s, "POST", "/likes", `{"to_user_id":"`+bID+`","video_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}`, a)
+	// Аня лайкает обе записи Бориса и снимает один лайк. Записи остаются в ленте.
+	expect(t, do(s, "POST", "/videos/"+v1+"/like", `{}`, anya), 204, "")
+	expect(t, do(s, "POST", "/videos/"+v2+"/like", `{}`, anya), 204, "")
+	expect(t, do(s, "POST", "/videos/"+v2+"/like", `{}`, anya), 204, "") // повтор ничего не меняет
+	expect(t, do(s, "DELETE", "/videos/"+v1+"/like", `{}`, anya), 204, "")
+	if f := feedLiked(anya); len(f) != 2 || f[v1] || !f[v2] {
+		t.Fatalf("feed after likes: %v", f)
+	}
+	expect(t, do(s, "POST", "/videos/"+v1+"/like", `{}`, boris), 400, "invalid") // свою — нельзя
+	expect(t, do(s, "POST", "/videos/cccccccc-cccc-4ccc-8ccc-cccccccccccc/like", `{}`, anya), 404, "not_found")
+
+	// Лайки записей предложений не создают.
+	if n := incoming(boris); n != 0 {
+		t.Fatalf("video likes must not create invites: %d", n)
+	}
+	if r := jsonBody(t, do(s, "GET", "/users/"+borisID+"/relation", "", anya)); r["invited"] != false || r["mutual"] != false {
+		t.Fatalf("relation before invite: %v", r)
+	}
+
+	// Предложение — отдельное действие. Входящее у Бориса появляется только после него.
+	expect(t, do(s, "POST", "/invites", `{"to_user_id":"`+anyaID+`"}`, anya), 400, "invalid") // себе — нельзя
+	rec := do(s, "POST", "/invites", `{"to_user_id":"`+borisID+`"}`, anya)
 	expect(t, rec, 200, "")
-	if jsonBody(t, rec)["matched"] != false {
-		t.Fatal("one-sided like must not match")
+	if jsonBody(t, rec)["mutual"] != false {
+		t.Fatal("one-sided invite must not be mutual")
 	}
-	expect(t, do(s, "POST", "/likes", `{"to_user_id":"`+bID+`"}`, a), 200, "") // повтор ничего не меняет
-	if n := len(jsonBody(t, do(s, "GET", "/feed", "", a))["items"].([]any)); n != 0 {
-		t.Fatal("liked author must leave the feed")
+	expect(t, do(s, "POST", "/invites", `{"to_user_id":"`+borisID+`"}`, anya), 200, "") // без дублей
+	if n := incoming(boris); n != 1 {
+		t.Fatalf("incoming for boris: %d", n)
 	}
-
-	rec = do(s, "GET", "/likes/incoming", "", b)
-	expect(t, rec, 200, "")
-	items := jsonBody(t, rec)["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["author"].(map[string]any)["id"] != aID {
+	items := jsonBody(t, do(s, "GET", "/invites/incoming", "", boris))["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["author"].(map[string]any)["id"] != anyaID {
 		t.Fatalf("incoming: %v", items)
 	}
-	if jsonBody(t, do(s, "GET", "/likes/incoming/count", "", b))["count"].(float64) != 1 {
-		t.Fatal("count must be 1")
+	if r := jsonBody(t, do(s, "GET", "/users/"+anyaID+"/relation", "", boris)); r["invited_me"] != true || r["invited"] != false {
+		t.Fatalf("relation for boris: %v", r)
+	}
+	// Снятие лайка записи предложение не трогает.
+	expect(t, do(s, "DELETE", "/videos/"+v2+"/like", `{}`, anya), 204, "")
+	if n := incoming(boris); n != 1 {
+		t.Fatal("unlike must not touch the invite")
 	}
 
-	// «Не сейчас» скрывает, но ответный лайк потом всё равно даёт совпадение.
-	expect(t, do(s, "POST", "/likes/incoming/"+aID+"/dismiss", `{}`, b), 204, "")
-	if n := len(jsonBody(t, do(s, "GET", "/likes/incoming", "", b))["items"].([]any)); n != 0 {
-		t.Fatal("dismissed like must be hidden")
+	// «Не сейчас» скрывает, но ответное предложение всё равно даёт взаимность.
+	expect(t, do(s, "POST", "/invites/incoming/"+anyaID+"/dismiss", `{}`, boris), 204, "")
+	if n := incoming(boris); n != 0 {
+		t.Fatal("dismissed invite must be hidden")
 	}
-
-	rec = do(s, "POST", "/likes", `{"to_user_id":"`+aID+`"}`, b)
+	rec = do(s, "POST", "/invites", `{"to_user_id":"`+anyaID+`"}`, boris)
 	expect(t, rec, 200, "")
-	res := jsonBody(t, rec)
-	if res["matched"] != true || res["match_id"] == "" {
-		t.Fatalf("mutual like must match: %v", res)
+	if jsonBody(t, rec)["mutual"] != true {
+		t.Fatal("two invites must be mutual")
 	}
-	matchID := res["match_id"].(string)
-
-	for _, c := range []*http.Cookie{a, b} {
-		rec = do(s, "GET", "/matches", "", c)
-		expect(t, rec, 200, "")
-		if ms := jsonBody(t, rec)["items"].([]any); len(ms) != 1 || ms[0].(map[string]any)["id"] != matchID {
+	for _, c := range []struct {
+		cookie  *http.Cookie
+		otherID string
+	}{{anya, borisID}, {boris, anyaID}} {
+		ms := jsonBody(t, do(s, "GET", "/matches", "", c.cookie))["items"].([]any)
+		if len(ms) != 1 || ms[0].(map[string]any)["other"].(map[string]any)["id"] != c.otherID {
 			t.Fatalf("matches: %v", ms)
 		}
 	}
-	rec = do(s, "GET", "/matches/"+matchID, "", a)
-	expect(t, rec, 200, "")
-	if jsonBody(t, rec)["other"].(map[string]any)["id"] != bID {
-		t.Fatal("other side must be b")
+	if r := jsonBody(t, do(s, "GET", "/users/"+borisID+"/relation", "", anya)); r["mutual"] != true {
+		t.Fatalf("relation after mutual: %v", r)
 	}
-	if r := jsonBody(t, do(s, "GET", "/users/"+bID+"/relation", "", a)); r["liked"] != true || r["match_id"] != matchID {
-		t.Fatalf("relation: %v", r)
-	}
-	expect(t, do(s, "DELETE", "/likes/"+bID, `{}`, a), 409, "matched")
+	expect(t, do(s, "DELETE", "/invites/"+borisID, `{}`, anya), 409, "matched")
 
-	c, _ := login(t, s, sms, "89275550003")
-	expect(t, do(s, "PATCH", "/me", fullProfile, c), 200, "")
-	expect(t, do(s, "GET", "/matches/"+matchID, "", c), 404, "not_found")
-	expect(t, do(s, "POST", "/likes", `{"to_user_id":"`+bID+`"}`, c), 200, "")
-	expect(t, do(s, "DELETE", "/likes/"+bID, `{}`, c), 204, "")
-	if r := jsonBody(t, do(s, "GET", "/users/"+bID+"/relation", "", c)); r["liked"] != false {
-		t.Fatal("unlike must remove like")
+	// Третий: предложение можно отменить, пока нет взаимности.
+	vera, _ := login(t, s, sms, "89275550003")
+	expect(t, do(s, "PATCH", "/me", fullProfile, vera), 200, "")
+	expect(t, do(s, "POST", "/invites", `{"to_user_id":"`+borisID+`"}`, vera), 200, "")
+	expect(t, do(s, "DELETE", "/invites/"+borisID, `{}`, vera), 204, "")
+	if r := jsonBody(t, do(s, "GET", "/users/"+borisID+"/relation", "", vera)); r["invited"] != false {
+		t.Fatal("withdraw must remove invite")
+	}
+	if n := len(jsonBody(t, do(s, "GET", "/matches", "", vera))["items"].([]any)); n != 0 {
+		t.Fatal("vera has no matches")
+	}
+}
+
+// Два встречных предложения одновременно: у каждого ровно одно совпадение, и хотя бы один ответ — «взаимно».
+func TestInvitesConcurrent(t *testing.T) {
+	s, sms, _ := requireDB(t)
+	a, aID := login(t, s, sms, "89275550011")
+	expect(t, do(s, "PATCH", "/me", fullProfile, a), 200, "")
+	b, bID := login(t, s, sms, "89275550012")
+	expect(t, do(s, "PATCH", "/me", fullProfile, b), 200, "")
+
+	var wg sync.WaitGroup
+	results := make([]map[string]any, 2)
+	for i, p := range []struct {
+		c  *http.Cookie
+		to string
+	}{{a, bID}, {b, aID}} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := do(s, "POST", "/invites", `{"to_user_id":"`+p.to+`"}`, p.c)
+			if rec.Code != 200 {
+				t.Errorf("invite %d: %d %s", i, rec.Code, rec.Body.String())
+				return
+			}
+			results[i] = jsonBody(t, rec)
+		}()
+	}
+	wg.Wait()
+	if results[0] == nil || results[1] == nil {
+		t.FailNow()
+	}
+	if results[0]["mutual"] != true && results[1]["mutual"] != true {
+		t.Fatalf("one of the concurrent invites must see mutual: %v", results)
+	}
+	for _, c := range []*http.Cookie{a, b} {
+		if n := len(jsonBody(t, do(s, "GET", "/matches", "", c))["items"].([]any)); n != 1 {
+			t.Fatalf("matches after concurrent invites: %d", n)
+		}
 	}
 }
 

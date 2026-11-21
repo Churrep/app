@@ -46,7 +46,7 @@ export function TabsLayout() {
         </button>
       )}
       {toast && (
-        <button className="toast toast-action" onClick={() => { setToast(false); navigate('/likes') }}>
+        <button className="toast toast-action" onClick={() => { setToast(false); navigate('/invites') }}>
           Кто-то хочет с тобой поиграть — посмотреть
         </button>
       )}
@@ -55,7 +55,7 @@ export function TabsLayout() {
           <NavLink key={to} to={to} className="tab">
             <span className="tab-icon">
               <Icon />
-              {to === '/matches' && incoming > 0 && <span className="tab-badge" aria-label={`новых лайков: ${incoming}`}>{incoming > 99 ? '99+' : incoming}</span>}
+              {to === '/matches' && incoming > 0 && <span className="tab-badge" aria-label={`новых предложений: ${incoming}`}>{incoming > 99 ? '99+' : incoming}</span>}
             </span>
             <span>{label}</span>
           </NavLink>

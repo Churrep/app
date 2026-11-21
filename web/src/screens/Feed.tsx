@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { api, errorText } from '../api'
-import { MatchOverlay, PlayIcon } from '../components/LikeBits'
+import { PlayIcon } from '../components/LikeBits'
 import { Avatar } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { AudioCover, instrumentName, liveTake } from '../components/VideoBits'
 import { useMe } from '../session'
-import type { Author, Catalog, FeedItem, LikeResult } from '../types'
+import type { Catalog, FeedItem } from '../types'
 import { nameOf } from '../types'
 
 type Filters = { instrument: string; genre: string; looking_for: string; level_min: number; level_max: number }
@@ -31,8 +31,8 @@ export function Feed() {
   const [active, setActive] = useState(0)
   // Автозапуск звука запрещён: первое видео без звука, после тапа лента играет со звуком.
   const [muted, setMuted] = useState(true)
-  const [liked, setLiked] = useState<Set<string>>(new Set())
-  const [match, setMatch] = useState<Author | null>(null)
+  // Лайки записей, которые зритель поменял в этой сессии (id записи → лайк). Остальное — из ответа ленты.
+  const [likes, setLikes] = useState<Map<string, boolean>>(new Map())
   const [toast, setToast] = useState('')
   const loadingMore = useRef(false)
 
@@ -42,19 +42,17 @@ export function Feed() {
     return () => clearTimeout(t)
   }, [toast])
 
-  // Лайк ставится человеку: повторный лайк того же автора с другого видео ничего не меняет.
-  async function like(it: FeedItem) {
-    if (liked.has(it.author.id)) return
-    setLiked((s) => new Set(s).add(it.author.id))
+  const isLiked = (it: FeedItem) => likes.get(it.video.id) ?? it.liked
+
+  // Лайк ставится записи и на знакомства не влияет. «Хочу поиграть» — в профиле музыканта.
+  async function setLike(it: FeedItem, on: boolean) {
+    if (isLiked(it) === on) return
+    const prev = isLiked(it)
+    setLikes((m) => new Map(m).set(it.video.id, on))
     try {
-      const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: it.author.id, video_id: it.video.id } })
-      if (r.matched) setMatch(it.author)
+      await api(`/videos/${it.video.id}/like`, { method: on ? 'POST' : 'DELETE' })
     } catch (e) {
-      setLiked((s) => {
-        const n = new Set(s)
-        n.delete(it.author.id)
-        return n
-      })
+      setLikes((m) => new Map(m).set(it.video.id, prev))
       setToast(errorText(e))
     }
   }
@@ -148,19 +146,18 @@ export function Feed() {
           {items.map((it, i) => (
             <FeedCard key={it.video.id} item={it} index={i} catalog={catalog} active={i === active}
               preload={i >= active && i <= active + 2} muted={muted} onUnmute={() => setMuted(false)}
-              liked={liked.has(it.author.id)} onLike={() => like(it)} />
+              liked={isLiked(it)} onLike={() => setLike(it, true)} onToggleLike={() => setLike(it, !isLiked(it))} />
           ))}
         </div>
       )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
-      {match && <MatchOverlay other={match} onClose={() => setMatch(null)} />}
       {showFilters && <FilterSheet catalog={catalog} value={filters} onClose={() => setShowFilters(false)} onApply={(f) => { setFilters(f); setShowFilters(false) }} />}
     </main>
   )
 }
 
-function FeedCard({ item, index, catalog, active, preload, muted, onUnmute, liked, onLike }: {
+function FeedCard({ item, index, catalog, active, preload, muted, onUnmute, liked, onLike, onToggleLike }: {
   item: FeedItem
   index: number
   catalog: Catalog
@@ -169,7 +166,8 @@ function FeedCard({ item, index, catalog, active, preload, muted, onUnmute, like
   muted: boolean
   onUnmute: () => void
   liked: boolean
-  onLike: () => void
+  onLike: () => void // двойной тап — только ставит лайк
+  onToggleLike: () => void // кнопка — ставит и снимает
 }) {
   const { video, author } = item
   const ref = useRef<HTMLMediaElement | null>(null)
@@ -237,9 +235,9 @@ function FeedCard({ item, index, catalog, active, preload, muted, onUnmute, like
         <Link to={`/users/${author.id}`} className="feed-avatar" aria-label={`Профиль: ${author.name}`}>
           <Avatar name={author.name} url={author.photo_url} size={48} />
         </Link>
-        <button className={liked ? 'feed-like on' : 'feed-like'} onClick={onLike} aria-pressed={liked} aria-label="Хочу поиграть">
+        <button className={liked ? 'feed-like on' : 'feed-like'} onClick={onToggleLike} aria-pressed={liked} aria-label={liked ? 'Убрать лайк записи' : 'Нравится запись'}>
           <PlayIcon filled={liked} />
-          <span>{liked ? 'Ты в деле' : 'Хочу поиграть'}</span>
+          <span>{liked ? 'Нравится' : 'Лайк'}</span>
         </button>
       </div>
     </section>

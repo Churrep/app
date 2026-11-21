@@ -329,10 +329,11 @@ func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request, u profile.Us
 	type item struct {
 		Video  videoView      `json:"video"`
 		Author profile.Author `json:"author"`
+		Liked  bool           `json:"liked"` // я лайкнул эту запись
 	}
 	out := make([]item, len(items))
 	for i, it := range items {
-		out[i] = item{s.videoView(it.Video), it.Author}
+		out[i] = item{s.videoView(it.Video), it.Author, it.Liked}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out, "next_cursor": next})
 }

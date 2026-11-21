@@ -6,7 +6,8 @@ import { Header } from '../components/Header'
 import { ProfileView } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { useMe } from '../session'
-import type { LikeResult, PublicUser, Video } from '../types'
+import { refreshIncoming } from '../lib/incoming'
+import type { InviteResult, PublicUser, Relation, Video } from '../types'
 import { AudioCover, instrumentName, useVideos, VideoGrid, VideoModal } from '../components/VideoBits'
 
 export function UserProfile() {
@@ -41,7 +42,7 @@ export function UserProfile() {
       <>
         <UserVideos user={user} />
         <ProfileView user={user} catalog={catalog} />
-        <LikeAction user={user} />
+        <InviteAction user={user} />
       </>
     )
 
@@ -77,31 +78,41 @@ function UserVideos({ user }: { user: PublicUser }) {
   )
 }
 
-function LikeAction({ user }: { user: PublicUser }) {
+// InviteAction — «Хочу поиграть» в профиле музыканта. Отдельно от лайков записей.
+function InviteAction({ user }: { user: PublicUser }) {
   const { me } = useMe()
-  const [rel, setRel] = useState<{ liked: boolean; match_id?: string } | null>(null)
+  const [rel, setRel] = useState<Relation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [matched, setMatched] = useState(false)
 
   useEffect(() => {
-    api<{ liked: boolean; match_id?: string }>(`/users/${user.id}/relation`).then(setRel).catch(() => setRel(null))
+    api<Relation>(`/users/${user.id}/relation`).then(setRel).catch(() => setRel(null))
   }, [user.id])
 
   if (user.id === me.id || !rel) return null
 
-  async function toggle() {
+  async function invite() {
     setBusy(true)
     setError('')
     try {
-      if (rel!.liked) {
-        await api(`/likes/${user.id}`, { method: 'DELETE' })
-        setRel({ liked: false })
-      } else {
-        const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: user.id } })
-        setRel({ liked: true, match_id: r.match_id || undefined })
-        if (r.matched) setMatched(true)
-      }
+      const r = await api<InviteResult>('/invites', { method: 'POST', body: { to_user_id: user.id } })
+      setRel({ ...rel!, invited: true, mutual: r.mutual })
+      if (r.mutual) setMatched(true)
+      refreshIncoming()
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function withdraw() {
+    setBusy(true)
+    setError('')
+    try {
+      await api(`/invites/${user.id}`, { method: 'DELETE' })
+      setRel({ ...rel!, invited: false, mutual: false })
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -112,15 +123,20 @@ function LikeAction({ user }: { user: PublicUser }) {
   return (
     <div className="bottom-actions">
       {error && <p className="error-text" role="alert">{error}</p>}
-      {rel.match_id ? (
+      {rel.mutual ? (
         <p className="note center">Вы оба хотите поиграть вместе.</p>
-      ) : rel.liked ? (
+      ) : rel.invited ? (
         <>
-          <p className="small muted center">Ты хочешь поиграть вместе. Если ответят тем же — появится совпадение.</p>
-          <button className="btn btn-secondary" disabled={busy} onClick={toggle}>Отменить</button>
+          <p className="small muted center">Предложение отправлено. Если {user.name} ответит тем же — появится совпадение.</p>
+          <button className="btn btn-secondary" disabled={busy} onClick={withdraw}>Отменить предложение</button>
+        </>
+      ) : rel.invited_me ? (
+        <>
+          <p className="small center accent-text">{user.name} хочет с тобой поиграть.</p>
+          <button className="btn btn-primary" disabled={busy} onClick={invite}>Ответить взаимностью</button>
         </>
       ) : (
-        <button className="btn btn-primary" disabled={busy} onClick={toggle}>Хочу поиграть</button>
+        <button className="btn btn-primary" disabled={busy} onClick={invite}>Хочу поиграть</button>
       )}
       {matched && <MatchOverlay other={user} onClose={() => setMatched(false)} />}
     </div>

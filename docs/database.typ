@@ -58,14 +58,15 @@
 #block(width:100%,height:53mm)[
   #let u = row(20)
   #link(((107,row(0)+5),(86,row(0)+5),(86,u),(65,u)),teal)
-  #for (y,bus,lane) in ((9.5,181,-2),(14.5,187,-4),(39.5,184,49),(44.5,191,52)) {
+  #for (y,bus,lane) in ((9.5,181,-2),(39.5,184,49),(44.5,191,52)) {
     link(((208,y),(bus,y),(bus,lane),(75,lane),(75,u),(65,u)),teal)
   }
-  #link(((208,19.5),(177,19.5),(177,9.5),(172,9.5)),blue, optional:true)
+  #link(((208,14.5),(177,14.5),(177,9.5),(172,9.5)),blue)
   #user(20)
   #card(107,0,"videos",(pk,("FK","user_id","uuid")))
-  #card(208,0,"likes",(("PK FK","from_user_id","uuid"),("PK FK","to_user_id","uuid"),("FK","source_video_id","uuid?")))
-  #card(208,25,"matches",(pk,("FK","user_a_id","uuid"),("FK","user_b_id","uuid")))
+  // likes — лайк записи; play_invites — «Хочу поиграть». Совпадение = два встречных предложения, отдельно не хранится.
+  #card(208,0,"likes",(("PK FK","user_id","uuid"),("PK FK","video_id","uuid")))
+  #card(208,25,"play_invites",(("PK FK","from_user_id","uuid"),("PK FK","to_user_id","uuid")))
 ]
 #group[Группы и прослушивания]
 #v(5mm)

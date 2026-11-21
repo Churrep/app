@@ -276,6 +276,7 @@ type FeedFilter struct {
 type FeedItem struct {
 	Video  Video
 	Author profile.Author
+	Liked  bool // зритель лайкнул эту запись
 }
 
 // Feed — свежие записи других музыкантов с фильтрами. Курсор — «created_at_unixnano_id» последней записи.
@@ -298,11 +299,12 @@ func (s *Service) Feed(ctx context.Context, viewerID string, f FeedFilter, curso
 		curTime, curID = &t, &id
 	}
 
-	rows, err := s.db.Query(ctx, `SELECT `+cols+`, `+profile.AuthorSQL("u")+`
+	// Лайк записи ничего не скрывает: лайкнутые записи остаются в ленте с отметкой.
+	rows, err := s.db.Query(ctx, `SELECT `+cols+`, `+profile.AuthorSQL("u")+`,
+			EXISTS (SELECT 1 FROM likes lk WHERE lk.user_id = $1 AND lk.video_id = v.id)
 		FROM videos v JOIN users u ON u.id = v.user_id
 		WHERE v.status = 'ready' AND v.deleted_at IS NULL AND u.deleted_at IS NULL AND u.level > 0
 		  AND v.user_id <> $1
-		  AND NOT EXISTS (SELECT 1 FROM likes lk WHERE lk.from_user_id = $1 AND lk.to_user_id = u.id)
 		  AND ($2 = '' OR EXISTS (SELECT 1 FROM user_instruments ui WHERE ui.user_id = u.id AND ui.instrument_id = $2))
 		  AND ($3 = '' OR EXISTS (SELECT 1 FROM user_genres ug WHERE ug.user_id = u.id AND ug.genre_id = $3))
 		  AND ($4 = '' OR u.looking_for = $4)
@@ -318,7 +320,7 @@ func (s *Service) Feed(ctx context.Context, viewerID string, f FeedFilter, curso
 		var it FeedItem
 		var peaks []byte
 		var a profile.AuthorScan
-		err := r.Scan(append(scanDest(&it.Video, &peaks), a.Dest()...)...)
+		err := r.Scan(append(append(scanDest(&it.Video, &peaks), a.Dest()...), &it.Liked)...)
 		it.Video.Peaks = media.ParsePeaks(peaks)
 		it.Author = a.Author(now)
 		return it, err
