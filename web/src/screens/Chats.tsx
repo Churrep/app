@@ -8,7 +8,6 @@ import { Avatar } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { AudioCover, instrumentName } from '../components/VideoBits'
 import { refreshIncoming, useIncomingCount } from '../lib/incoming'
-import { disablePush, enablePush, pushState, type PushState } from '../lib/notify'
 import { useMe } from '../session'
 import type { IncomingLike, LikeResult, Match } from '../types'
 import { fmtAgo, nameOf } from '../types'
@@ -28,43 +27,6 @@ function useLoad<T>(path: string) {
   return { data, error, reload: useCallback(() => setTick((n) => n + 1), []) }
 }
 
-// Карточка «Включи уведомления». На iPhone — подсказка поставить приложение на экран.
-export function PushCard({ compact }: { compact?: boolean }) {
-  const [state, setState] = useState<PushState | null>(null)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    pushState().then(setState)
-  }, [])
-  if (!state || state === 'unsupported') return null
-  if (compact && state === 'on') return null
-
-  async function toggle() {
-    setError('')
-    try {
-      setState(state === 'on' ? await disablePush() : await enablePush())
-    } catch (e) {
-      setError(errorText(e))
-    }
-  }
-
-  return (
-    <section className="card">
-      <h3>Уведомления</h3>
-      {state === 'need-install' && <p className="small">На iPhone уведомления приходят, только если приложение добавлено на экран «Домой». Поставь его через «Поделиться» → «На экран „Домой“» и открой оттуда.</p>}
-      {state === 'denied' && <p className="small">Уведомления запрещены в браузере. Разреши их в настройках сайта и обнови страницу.</p>}
-      {(state === 'off' || state === 'on') && (
-        <>
-          <p className="small">{state === 'on' ? 'Включены: сообщим, когда кто-то захочет с тобой поиграть.' : 'Узнавай сразу, когда кто-то хочет с тобой поиграть.'}</p>
-          <button className={state === 'on' ? 'btn btn-secondary' : 'btn btn-primary'} onClick={toggle}>
-            {state === 'on' ? 'Выключить уведомления' : 'Включить уведомления'}
-          </button>
-        </>
-      )}
-      {error && <p className="error-text">{error}</p>}
-    </section>
-  )
-}
-
 export function Chats() {
   const { catalog } = useMe()
   const incoming = useIncomingCount()
@@ -78,7 +40,6 @@ export function Chats() {
           <strong>Тебя лайкнули · {incoming}</strong>
           <span className="small muted">{incoming ? 'Посмотри, кто хочет с тобой поиграть' : 'Пока никого — запиши видео, чтобы тебя заметили'}</span>
         </Link>
-        <PushCard compact />
         {error ? <ErrorState error={error} onRetry={reload} /> : !data ? <Loading /> : data.items.length === 0 ? (
           <Empty title="Совпадений пока нет" text="Когда кто-то захочет с тобой поиграть и ты ответишь тем же, здесь откроется чат." />
         ) : (

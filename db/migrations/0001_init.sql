@@ -75,7 +75,7 @@ CREATE INDEX videos_feed_idx ON videos (created_at DESC, id DESC) WHERE status =
 CREATE INDEX videos_user_idx ON videos (user_id, created_at DESC);
 CREATE UNIQUE INDEX videos_one_pinned ON videos (user_id) WHERE is_pinned AND deleted_at IS NULL;
 
--- ---------- Лайки и уведомления ----------
+-- ---------- Лайки и совпадения ----------
 
 -- «Хочу поиграть»: лайк ставится человеку, а не видео. Повторный лайк того же человека ничего не меняет.
 CREATE TABLE likes (
@@ -100,16 +100,6 @@ CREATE TABLE matches (
     CHECK (user_a_id < user_b_id)
 );
 CREATE INDEX matches_b_idx ON matches (user_b_id);
-
--- Подписки браузеров на push-уведомления (Web Push, VAPID).
-CREATE TABLE push_subscriptions (
-    endpoint   text PRIMARY KEY,
-    user_id    uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    p256dh     text        NOT NULL,
-    auth       text        NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX push_subscriptions_user_idx ON push_subscriptions (user_id);
 
 -- ---------- Группы и «недостающая дорожка» ----------
 

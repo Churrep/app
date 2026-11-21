@@ -16,7 +16,6 @@ import (
 	"music/likes"
 	"music/media"
 	"music/profile"
-	"music/push"
 	"music/tracks"
 	"music/videos"
 )
@@ -48,7 +47,6 @@ type Extensions struct {
 	Videos *videos.Service
 	Tracks *tracks.Service
 	Likes  *likes.Service
-	Push   *push.Service
 }
 
 func New(cfg Config, users profile.Store, otp *auth.OTP, sessions auth.SessionStore, logger *slog.Logger, ext *Extensions) *Server {

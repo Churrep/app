@@ -152,7 +152,7 @@ export function Onboarding() {
       nextLabel = 'Готово'
       onNext = () => navigate('/feed', { replace: true })
       content = (
-        <Question title="Поставь приложение на экран" hint="Так оно открывается быстрее и может присылать уведомления.">
+        <Question title="Поставь приложение на экран" hint="Его можно будет открывать с главного экрана.">
           <InstallGuide />
         </Question>
       )

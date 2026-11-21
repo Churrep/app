@@ -13,18 +13,16 @@ import (
 
 	"music/apperr"
 	"music/profile"
-	"music/push"
 )
 
 const DailyLimit = 50
 
 type Service struct {
-	db   *pgxpool.Pool
-	push *push.Service // nil — без уведомлений
+	db *pgxpool.Pool
 }
 
-func NewService(db *pgxpool.Pool, p *push.Service) *Service {
-	return &Service{db: db, push: p}
+func NewService(db *pgxpool.Pool) *Service {
+	return &Service{db: db}
 }
 
 type LikeResult struct {
@@ -86,7 +84,6 @@ func (s *Service) Like(ctx context.Context, fromID, toID, videoID string, now ti
 		return LikeResult{}, err
 	}
 	res := LikeResult{}
-	newMatch := false
 	if reverse {
 		a, b := fromID, toID
 		if b < a {
@@ -101,23 +98,11 @@ func (s *Service) Like(ctx context.Context, fromID, toID, videoID string, now ti
 			}
 		case err != nil:
 			return LikeResult{}, err
-		default:
-			newMatch = true
 		}
 		res.Matched = true
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return LikeResult{}, err
-	}
-
-	if s.push != nil {
-		switch {
-		case newMatch:
-			s.push.SendAsync(toID, push.Message{Title: "Совпадение!", Body: "Вы оба хотите поиграть вместе. Загляни в чаты", URL: "/chats/" + res.MatchID, Tag: "match"})
-		case !exists && !reverse:
-			// Без имени — чтобы человек зашёл и посмотрел сам.
-			s.push.SendAsync(toID, push.Message{Title: "Кто-то хочет с тобой поиграть", Body: "Посмотри, кто это", URL: "/likes", Tag: "likes"})
-		}
 	}
 	return res, nil
 }

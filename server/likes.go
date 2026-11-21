@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	webpush "github.com/SherClockHolmes/webpush-go"
-
 	"music/profile"
 )
 
@@ -19,10 +17,6 @@ func (s *Server) routesLikes(m *http.ServeMux) {
 	m.HandleFunc("GET /users/{id}/relation", s.withExt(s.withOnboarded(s.handleRelation)))
 	m.HandleFunc("GET /matches", s.withExt(s.withOnboarded(s.handleMatches)))
 	m.HandleFunc("GET /matches/{id}", s.withExt(s.withOnboarded(s.handleMatch)))
-
-	m.HandleFunc("GET /push/key", s.withExt(s.withUser(s.handlePushKey)))
-	m.HandleFunc("POST /push/subscribe", s.withExt(s.withUser(s.handlePushSubscribe)))
-	m.HandleFunc("POST /push/unsubscribe", s.withExt(s.withUser(s.handlePushUnsubscribe)))
 }
 
 func (s *Server) handleLike(w http.ResponseWriter, r *http.Request, u profile.User) {
@@ -128,56 +122,4 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request, u profile.U
 		return
 	}
 	writeJSON(w, http.StatusOK, matchView{m.ID, m.Other, m.CreatedAt, m.DMRestricted})
-}
-
-func (s *Server) pushReady(w http.ResponseWriter) bool {
-	if s.ext.Push == nil {
-		writeError(w, http.StatusServiceUnavailable, "push_unavailable", "Уведомления пока недоступны")
-		return false
-	}
-	return true
-}
-
-func (s *Server) handlePushKey(w http.ResponseWriter, r *http.Request, u profile.User) {
-	if !s.pushReady(w) {
-		return
-	}
-	enabled, err := s.ext.Push.Enabled(r.Context(), u.ID)
-	if err != nil {
-		s.fail(w, "push status", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"public_key": s.ext.Push.PublicKey(), "enabled": enabled})
-}
-
-func (s *Server) handlePushSubscribe(w http.ResponseWriter, r *http.Request, u profile.User) {
-	if !s.pushReady(w) {
-		return
-	}
-	var sub webpush.Subscription
-	if !decode(w, r, &sub) {
-		return
-	}
-	if err := s.ext.Push.Subscribe(r.Context(), u.ID, sub); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_subscription", "Не получилось включить уведомления")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request, u profile.User) {
-	if !s.pushReady(w) {
-		return
-	}
-	var req struct {
-		Endpoint string `json:"endpoint"`
-	}
-	if !decode(w, r, &req) {
-		return
-	}
-	if err := s.ext.Push.Unsubscribe(r.Context(), u.ID, req.Endpoint); err != nil {
-		s.fail(w, "push unsubscribe", err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

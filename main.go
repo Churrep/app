@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 	"music/likes"
 	"music/media"
 	"music/profile"
-	"music/push"
 	"music/server"
 	"music/tracks"
 	"music/videos"
@@ -78,15 +76,9 @@ func main() {
 		ext = &server.Extensions{
 			Media:  m,
 			Videos: videos.NewService(pool, m),
+			Likes:  likes.NewService(pool),
 			Tracks: tracks.NewService(pool, m),
 		}
-		keys, err := push.LoadKeys(filepath.Join(m.Storage.Dir, ".vapid.json"))
-		if err != nil {
-			logger.Error("ключи push-уведомлений", "err", err)
-		} else {
-			ext.Push = push.NewService(pool, keys, env("VAPID_SUBJECT", "mailto:admin@example.com"), logger)
-		}
-		ext.Likes = likes.NewService(pool, ext.Push)
 		if m.FFErr == nil {
 			if err := ext.Videos.Resume(context.Background()); err != nil {
 				logger.Error("очередь видео", "err", err)

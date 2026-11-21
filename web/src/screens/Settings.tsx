@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router'
 import { errorText } from '../api'
 import { Header } from '../components/Header'
 import { InstallGuide } from '../components/InstallGuide'
-import { PushCard } from './Chats'
 import { useMe } from '../session'
 import type { MePatch } from '../types'
 
@@ -46,7 +45,6 @@ export function Settings() {
             hint={minor ? 'Пока тебе нет 18, район в профиле скрыт для всех' : undefined} />
         </section>
 
-        <PushCard />
 
         <section className="card">
           <h3>Приложение на экране «Домой»</h3>

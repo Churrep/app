@@ -35,7 +35,7 @@ func testExtensions(t *testing.T, pool *pgxpool.Pool) *Extensions {
 		Queue:   media.NewQueue(1, slog.New(slog.NewTextHandler(io.Discard, nil))),
 		FFErr:   ff.Check(),
 	}
-	return &Extensions{Media: m, Videos: videos.NewService(pool, m), Tracks: tracks.NewService(pool, m), Likes: likes.NewService(pool, nil)}
+	return &Extensions{Media: m, Videos: videos.NewService(pool, m), Tracks: tracks.NewService(pool, m), Likes: likes.NewService(pool)}
 }
 
 func requireDB(t *testing.T) (*Server, *fakeSMS, *pgxpool.Pool) {
