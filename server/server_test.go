@@ -172,9 +172,6 @@ func TestPublicProfileRules(t *testing.T) {
 	if _, ok := body["age"]; ok {
 		t.Fatal("age must be hidden by default")
 	}
-	if body["dm_restricted"] != true {
-		t.Fatal("DMs between adult and minor must be restricted")
-	}
 
 	newbie, _ := login(t, s, sms, "89273333333")
 	expect(t, do(s, "GET", "/users/"+minorID, "", newbie), 403, "onboarding_required")

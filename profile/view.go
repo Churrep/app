@@ -41,9 +41,6 @@ type PublicView struct {
 	Goals                []string     `json:"goals"`
 	LookingFor           string       `json:"looking_for"`
 	LookingForInstrument string       `json:"looking_for_instrument,omitempty"`
-	// DMRestricted: личные сообщения недоступны (один из двоих 16–17 лет, другой взрослый).
-	// В интерфейсе: «Личные сообщения с этим человеком недоступны», без объяснения причины.
-	DMRestricted bool `json:"dm_restricted"`
 }
 
 func (u User) Me(now time.Time) MeView {
@@ -75,7 +72,7 @@ func (u User) Me(now time.Time) MeView {
 	return v
 }
 
-func (u User) Public(viewer User, now time.Time) PublicView {
+func (u User) Public(now time.Time) PublicView {
 	v := PublicView{
 		ID:                   u.ID,
 		Name:                 u.Name,
@@ -87,7 +84,6 @@ func (u User) Public(viewer User, now time.Time) PublicView {
 		Goals:                orEmpty(u.Goals),
 		LookingFor:           u.LookingFor,
 		LookingForInstrument: u.LookingForInstrument,
-		DMRestricted:         u.ID != viewer.ID && u.IsMinor(now) != viewer.IsMinor(now),
 	}
 	if age, ok := u.Age(now); ok && u.ShowAge {
 		v.Age = &age

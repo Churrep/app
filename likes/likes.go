@@ -134,7 +134,7 @@ type Relation struct {
 	MatchID string `json:"match_id,omitempty"`
 }
 
-// Relation — для кнопки в профиле: «Хочу поиграть», «Отменить» или «Совпадение — написать».
+// Relation — для кнопки в профиле: «Хочу поиграть», «Отменить» или «Совпадение».
 func (s *Service) Relation(ctx context.Context, userID, otherID string) (Relation, error) {
 	var r Relation
 	if !profile.IsUUID(otherID) {
@@ -197,29 +197,20 @@ func (s *Service) Dismiss(ctx context.Context, userID, fromID string) error {
 }
 
 type Match struct {
-	ID           string
-	Other        profile.Author
-	CreatedAt    time.Time
-	DMRestricted bool
+	ID        string
+	Other     profile.Author
+	CreatedAt time.Time
 }
 
-var matchSQL = `SELECT m.id::text, m.created_at, ` + profile.AuthorSQL("u") + `,
-		(SELECT birth_date FROM users WHERE id = $1)
+var matchSQL = `SELECT m.id::text, m.created_at, ` + profile.AuthorSQL("u") + `
 	FROM matches m JOIN users u ON u.id = CASE WHEN m.user_a_id = $1 THEN m.user_b_id ELSE m.user_a_id END
 	WHERE (m.user_a_id = $1 OR m.user_b_id = $1) AND u.deleted_at IS NULL`
 
 func scanMatch(r pgx.Row, now time.Time) (Match, error) {
 	var m Match
 	var a profile.AuthorScan
-	var myBirth *time.Time
-	err := r.Scan(append(append([]any{&m.ID, &m.CreatedAt}, a.Dest()...), &myBirth)...)
+	err := r.Scan(append([]any{&m.ID, &m.CreatedAt}, a.Dest()...)...)
 	m.Other = a.Author(now)
-	me := profile.User{}
-	if myBirth != nil {
-		me.BirthDate = *myBirth
-	}
-	// Личные сообщения недоступны, если один из двоих 16–17 лет, а другой взрослый.
-	m.DMRestricted = me.IsMinor(now) != a.Minor(now)
 	return m, err
 }
 
@@ -233,11 +224,11 @@ func (s *Service) Matches(ctx context.Context, userID string, now time.Time) ([]
 
 func (s *Service) GetMatch(ctx context.Context, userID, id string, now time.Time) (Match, error) {
 	if !profile.IsUUID(id) {
-		return Match{}, apperr.NotFound("Чат не найден")
+		return Match{}, apperr.NotFound("Совпадение не найдено")
 	}
 	m, err := scanMatch(s.db.QueryRow(ctx, matchSQL+` AND m.id = $2`, userID, id), now)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Match{}, apperr.NotFound("Чат не найден")
+		return Match{}, apperr.NotFound("Совпадение не найдено")
 	}
 	return m, err
 }

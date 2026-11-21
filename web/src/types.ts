@@ -41,7 +41,6 @@ export type PublicUser = {
   goals: string[]
   looking_for: string
   looking_for_instrument?: string
-  dm_restricted: boolean
 }
 
 export type Item = { id: string; name: string }
@@ -153,7 +152,7 @@ export const fmtDuration = (ms: number) => {
 export const fmtDate = (iso: string) =>
   new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 
-export type Match = { id: string; other: Author; created_at: string; dm_restricted: boolean }
+export type Match = { id: string; other: Author; created_at: string }
 
 export type IncomingLike = {
   author: Author

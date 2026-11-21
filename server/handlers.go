@@ -188,7 +188,7 @@ func (s *Server) handleGetUser(w http.ResponseWriter, r *http.Request, viewer pr
 		writeError(w, http.StatusNotFound, "not_found", "Профиль не найден")
 		return
 	}
-	writeJSON(w, http.StatusOK, target.Public(viewer, s.now()))
+	writeJSON(w, http.StatusOK, target.Public(s.now()))
 }
 
 func (s *Server) internal(w http.ResponseWriter, what string, err error) {

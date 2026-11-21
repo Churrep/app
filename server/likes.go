@@ -96,10 +96,9 @@ func (s *Server) handleRelation(w http.ResponseWriter, r *http.Request, u profil
 }
 
 type matchView struct {
-	ID           string         `json:"id"`
-	Other        profile.Author `json:"other"`
-	CreatedAt    time.Time      `json:"created_at"`
-	DMRestricted bool           `json:"dm_restricted"`
+	ID        string         `json:"id"`
+	Other     profile.Author `json:"other"`
+	CreatedAt time.Time      `json:"created_at"`
 }
 
 func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request, u profile.User) {
@@ -110,7 +109,7 @@ func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request, u profile
 	}
 	out := make([]matchView, len(list))
 	for i, m := range list {
-		out[i] = matchView{m.ID, m.Other, m.CreatedAt, m.DMRestricted}
+		out[i] = matchView{m.ID, m.Other, m.CreatedAt}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
@@ -121,5 +120,5 @@ func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request, u profile.U
 		s.fail(w, "match", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, matchView{m.ID, m.Other, m.CreatedAt, m.DMRestricted})
+	writeJSON(w, http.StatusOK, matchView{m.ID, m.Other, m.CreatedAt})
 }

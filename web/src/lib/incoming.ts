@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { api } from '../api'
 
-// Сколько человек ждут ответа в «Тебя лайкнули». Общий счётчик для метки на вкладке «Чаты» и самих чатов.
+// Сколько человек ждут ответа в «Тебя лайкнули». Общий счётчик для метки на вкладке «Совпадения» и списка входящих лайков.
 let count = 0
 let initialized = false
 const listeners = new Set<() => void>()

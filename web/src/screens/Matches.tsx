@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { api, errorText } from '../api'
 import { Header } from '../components/Header'
-import { BackIcon } from '../components/Icons'
 import { MatchOverlay } from '../components/LikeBits'
 import { Avatar } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
@@ -27,28 +26,28 @@ function useLoad<T>(path: string) {
   return { data, error, reload: useCallback(() => setTick((n) => n + 1), []) }
 }
 
-export function Chats() {
+export function Matches() {
   const { catalog } = useMe()
   const incoming = useIncomingCount()
   const { data, error, reload } = useLoad<{ items: Match[] }>('/matches')
 
   return (
     <main className="screen">
-      <Header title="Чаты" />
+      <Header title="Совпадения" />
       <div className="screen-body">
         <Link to="/likes" className="card likes-entry">
           <strong>Тебя лайкнули · {incoming}</strong>
           <span className="small muted">{incoming ? 'Посмотри, кто хочет с тобой поиграть' : 'Пока никого — запиши видео, чтобы тебя заметили'}</span>
         </Link>
         {error ? <ErrorState error={error} onRetry={reload} /> : !data ? <Loading /> : data.items.length === 0 ? (
-          <Empty title="Совпадений пока нет" text="Когда кто-то захочет с тобой поиграть и ты ответишь тем же, здесь откроется чат." />
+          <Empty title="Совпадений пока нет" text="Когда кто-то захочет с тобой поиграть и ты ответишь тем же, здесь появится его профиль." />
         ) : (
-          <ul className="chat-list">
+          <ul className="match-list">
             {data.items.map((m) => (
               <li key={m.id}>
-                <Link to={`/chats/${m.id}`} className="chat-row">
+                <Link to={`/users/${m.other.id}`} className="match-row">
                   <Avatar name={m.other.name} url={m.other.photo_url} size={52} />
-                  <span className="chat-row-main">
+                  <span className="match-row-main">
                     <strong>{m.other.name}</strong>
                     <span className="small muted">{instrumentName(catalog, m.other.main_instrument)} · {m.other.level}/5 · совпадение {fmtAgo(m.created_at)}</span>
                   </span>
@@ -69,7 +68,7 @@ export function Likes() {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState('')
   const [actionError, setActionError] = useState('')
-  const [match, setMatch] = useState<{ id: string; other: IncomingLike['author'] } | null>(null)
+  const [match, setMatch] = useState<IncomingLike['author'] | null>(null)
 
   async function act(item: IncomingLike, kind: 'like' | 'dismiss') {
     setBusy(item.author.id)
@@ -77,7 +76,7 @@ export function Likes() {
     try {
       if (kind === 'like') {
         const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: item.author.id } })
-        if (r.matched) setMatch({ id: r.match_id, other: item.author })
+        if (r.matched) setMatch(item.author)
       } else {
         await api(`/likes/incoming/${item.author.id}/dismiss`, { method: 'POST' })
       }
@@ -123,43 +122,7 @@ export function Likes() {
           )
         })}
       </div>
-      {match && <MatchOverlay other={match.other} matchId={match.id} onClose={() => setMatch(null)} />}
-    </main>
-  )
-}
-
-// Чат после совпадения. Переписка появится в следующем обновлении — пока муляж без отправки.
-export function ChatMock() {
-  const { id = '' } = useParams()
-  const [params] = useSearchParams()
-  const { catalog } = useMe()
-  const { data: m, error, reload } = useLoad<Match>(`/matches/${encodeURIComponent(id)}`)
-
-  if (error) return <main className="screen"><Header back /><ErrorState error={error} onRetry={reload} /></main>
-  if (!m) return <main className="screen"><Header back /><Loading /></main>
-
-  const draft = params.get('jam') ? `Привет! Давай сыграем вместе?` : ''
-  return (
-    <main className="screen chat-screen">
-      <header className="header">
-        <button className="icon-btn" onClick={() => history.back()} aria-label="Назад"><BackIcon /></button>
-        <Link to={`/users/${m.other.id}`} className="chat-head">
-          <Avatar name={m.other.name} url={m.other.photo_url} size={40} />
-          <span>
-            <strong>{m.other.name}</strong>
-            <span className="block small muted">{instrumentName(catalog, m.other.main_instrument)} · {m.other.level}/5</span>
-          </span>
-        </Link>
-      </header>
-      <div className="chat-body">
-        <p className="chat-system">Совпадение {fmtAgo(m.created_at)}. Вы оба хотите поиграть вместе — обсудите, что сыграть и где встретиться.</p>
-        {m.dm_restricted && <p className="chat-system">Личные сообщения с этим человеком недоступны</p>}
-      </div>
-      <div className="chat-input">
-        <textarea className="input" rows={1} disabled defaultValue={draft} placeholder="Сообщение" aria-label="Сообщение" />
-        <button className="btn btn-primary" disabled aria-label="Отправить">➤</button>
-      </div>
-      <p className="small muted chat-note">Отправка сообщений появится в следующем обновлении</p>
+      {match && <MatchOverlay other={match} onClose={() => setMatch(null)} />}
     </main>
   )
 }

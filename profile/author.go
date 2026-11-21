@@ -38,15 +38,6 @@ func (s *AuthorScan) Dest() []any {
 		&s.a.District, &s.showDistrict, &s.birth, &s.a.LookingFor}
 }
 
-// Minor — автору 16–17 лет (или дата неизвестна).
-func (s *AuthorScan) Minor(now time.Time) bool {
-	u := User{}
-	if s.birth != nil {
-		u.BirthDate = *s.birth
-	}
-	return u.IsMinor(now)
-}
-
 func (s *AuthorScan) Author(now time.Time) Author {
 	a := s.a
 	if a.Genres == nil {

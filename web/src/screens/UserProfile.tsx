@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router'
 import { api, ApiError, errorText } from '../api'
-import { Link } from 'react-router'
 import { MatchOverlay } from '../components/LikeBits'
 import { Header } from '../components/Header'
 import { ProfileView } from '../components/ProfileView'
@@ -42,7 +41,6 @@ export function UserProfile() {
       <>
         <UserVideos user={user} />
         <ProfileView user={user} catalog={catalog} />
-        {user.dm_restricted && <p className="note">Личные сообщения с этим человеком недоступны</p>}
         <LikeAction user={user} />
       </>
     )
@@ -79,13 +77,12 @@ function UserVideos({ user }: { user: PublicUser }) {
   )
 }
 
-// Кнопка внизу профиля: «Хочу поиграть», отмена лайка (пока нет совпадения) или переход в чат.
 function LikeAction({ user }: { user: PublicUser }) {
   const { me } = useMe()
   const [rel, setRel] = useState<{ liked: boolean; match_id?: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [matched, setMatched] = useState('')
+  const [matched, setMatched] = useState(false)
 
   useEffect(() => {
     api<{ liked: boolean; match_id?: string }>(`/users/${user.id}/relation`).then(setRel).catch(() => setRel(null))
@@ -103,7 +100,7 @@ function LikeAction({ user }: { user: PublicUser }) {
       } else {
         const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: user.id } })
         setRel({ liked: true, match_id: r.match_id || undefined })
-        if (r.matched) setMatched(r.match_id)
+        if (r.matched) setMatched(true)
       }
     } catch (e) {
       setError(errorText(e))
@@ -116,16 +113,16 @@ function LikeAction({ user }: { user: PublicUser }) {
     <div className="bottom-actions">
       {error && <p className="error-text" role="alert">{error}</p>}
       {rel.match_id ? (
-        <Link className="btn btn-primary" to={`/chats/${rel.match_id}`}>Совпадение — написать</Link>
+        <p className="note center">Вы оба хотите поиграть вместе.</p>
       ) : rel.liked ? (
         <>
-          <p className="small muted center">Ты хочешь поиграть вместе. Если ответят тем же — откроется чат.</p>
+          <p className="small muted center">Ты хочешь поиграть вместе. Если ответят тем же — появится совпадение.</p>
           <button className="btn btn-secondary" disabled={busy} onClick={toggle}>Отменить</button>
         </>
       ) : (
         <button className="btn btn-primary" disabled={busy} onClick={toggle}>Хочу поиграть</button>
       )}
-      {matched && <MatchOverlay other={user} matchId={matched} onClose={() => setMatched('')} />}
+      {matched && <MatchOverlay other={user} onClose={() => setMatched(false)} />}
     </div>
   )
 }

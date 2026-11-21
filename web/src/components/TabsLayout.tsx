@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { onNewLike, refreshIncoming, useIncomingCount } from '../lib/incoming'
-import { ChatsIcon, FeedIcon, MeIcon, TracksIcon } from './Icons'
+import { MatchesIcon, FeedIcon, MeIcon, TracksIcon } from './Icons'
 
 const tabs = [
   { to: '/feed', label: 'Лента', Icon: FeedIcon },
   { to: '/tracks', label: 'Дорожки', Icon: TracksIcon },
-  { to: '/chats', label: 'Чаты', Icon: ChatsIcon },
+  { to: '/matches', label: 'Совпадения', Icon: MatchesIcon },
   { to: '/me', label: 'Я', Icon: MeIcon },
 ]
 
@@ -55,7 +55,7 @@ export function TabsLayout() {
           <NavLink key={to} to={to} className="tab">
             <span className="tab-icon">
               <Icon />
-              {to === '/chats' && incoming > 0 && <span className="tab-badge" aria-label={`новых лайков: ${incoming}`}>{incoming > 99 ? '99+' : incoming}</span>}
+              {to === '/matches' && incoming > 0 && <span className="tab-badge" aria-label={`новых лайков: ${incoming}`}>{incoming > 99 ? '99+' : incoming}</span>}
             </span>
             <span>{label}</span>
           </NavLink>

@@ -32,7 +32,7 @@ export function Feed() {
   // Автозапуск звука запрещён: первое видео без звука, после тапа лента играет со звуком.
   const [muted, setMuted] = useState(true)
   const [liked, setLiked] = useState<Set<string>>(new Set())
-  const [match, setMatch] = useState<{ id: string; other: Author } | null>(null)
+  const [match, setMatch] = useState<Author | null>(null)
   const [toast, setToast] = useState('')
   const loadingMore = useRef(false)
 
@@ -48,7 +48,7 @@ export function Feed() {
     setLiked((s) => new Set(s).add(it.author.id))
     try {
       const r = await api<LikeResult>('/likes', { method: 'POST', body: { to_user_id: it.author.id, video_id: it.video.id } })
-      if (r.matched) setMatch({ id: r.match_id, other: it.author })
+      if (r.matched) setMatch(it.author)
     } catch (e) {
       setLiked((s) => {
         const n = new Set(s)
@@ -154,7 +154,7 @@ export function Feed() {
       )}
 
       {toast && <div className="toast" role="status">{toast}</div>}
-      {match && <MatchOverlay other={match.other} matchId={match.id} onClose={() => setMatch(null)} />}
+      {match && <MatchOverlay other={match} onClose={() => setMatch(null)} />}
       {showFilters && <FilterSheet catalog={catalog} value={filters} onClose={() => setShowFilters(false)} onApply={(f) => { setFilters(f); setShowFilters(false) }} />}
     </main>
   )
