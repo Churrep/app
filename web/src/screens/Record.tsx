@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { errorText, upload } from '../api'
 import { Header } from '../components/Header'
 import { InsecureHelp, isPermissionError, mediaAvailable, musicAudio, PermissionHelp } from '../components/MediaHelp'
+import { type Camera, cameraPref, type Facing, fmtZoom, listCameras, saveCameraPref, setupZoom, setZoom, videoConstraints, type Zoom, zoomStops } from '../lib/camera'
 import { useMe } from '../session'
 import type { Video } from '../types'
 
@@ -19,11 +20,23 @@ function pickMime(mode: Mode) {
 
 const extOf = (mime: string) => (mime.includes('mp4') ? (mime.startsWith('audio') ? '.m4a' : '.mp4') : '.webm')
 
+// openCamera — камера (сохранённый объектив, если он ещё есть) и микрофон.
+async function openCamera(facing: Facing) {
+  const { deviceId } = cameraPref(facing)
+  try {
+    return await navigator.mediaDevices.getUserMedia({ video: videoConstraints(facing, deviceId), audio: musicAudio })
+  } catch (e) {
+    if (!deviceId || !(e instanceof DOMException) || (e.name !== 'OverconstrainedError' && e.name !== 'NotFoundError')) throw e
+    saveCameraPref(facing, { deviceId: undefined, zoom: undefined }) // объектива больше нет — берём обычный
+    return navigator.mediaDevices.getUserMedia({ video: videoConstraints(facing), audio: musicAudio })
+  }
+}
+
 export function Record() {
   const { catalog } = useMe()
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('video')
-  const [facing, setFacing] = useState<'user' | 'environment'>('user')
+  const [facing, setFacing] = useState<Facing>('user')
   const [tag, setTag] = useState('own')
   const [phase, setPhase] = useState<Phase>('setup')
   const [count, setCount] = useState(3)
@@ -33,8 +46,12 @@ export function Record() {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
+  const [cameras, setCameras] = useState<Camera[]>([])
+  const [cameraId, setCameraId] = useState('')
+  const [zoom, setZoomState] = useState<Zoom | null>(null)
 
   const preview = useRef<HTMLVideoElement>(null)
+  const previewBg = useRef<HTMLVideoElement>(null)
   const stream = useRef<MediaStream | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -54,15 +71,33 @@ export function Record() {
   const openStream = useCallback(async () => {
     stopStream()
     setError('')
+    setZoomState(null)
     if (!mediaAvailable()) return
     try {
-      const s = await navigator.mediaDevices.getUserMedia(
-        mode === 'video'
-          ? { video: { facingMode: facing, width: { ideal: 720 }, height: { ideal: 1280 } }, audio: musicAudio }
-          : { audio: musicAudio },
-      )
+      let s: MediaStream
+      if (mode === 'video') {
+        s = await openCamera(facing)
+        // Сзади есть отдельная сверхширокая камера, а зумом шире не сделать — по умолчанию берём её.
+        const pref = cameraPref(facing)
+        const cams = await listCameras(facing).catch(() => [])
+        const track = s.getVideoTracks()[0]
+        const current = track?.getSettings().deviceId ?? ''
+        const caps = (track?.getCapabilities?.() as { zoom?: { min: number } } | undefined)?.zoom
+        const ultra = cams.find((c) => c.ultra)
+        if (facing === 'environment' && !pref.deviceId && ultra && ultra.id !== current && !(caps && caps.min < 1)) {
+          s.getTracks().forEach((t) => t.stop())
+          saveCameraPref(facing, { deviceId: ultra.id })
+          s = await openCamera(facing)
+        }
+        const t = s.getVideoTracks()[0]
+        setCameras(cams)
+        setCameraId(t?.getSettings().deviceId ?? '')
+        if (t) setZoomState(await setupZoom(t, cameraPref(facing).zoom))
+      } else {
+        s = await navigator.mediaDevices.getUserMedia({ audio: musicAudio })
+      }
       stream.current = s
-      if (preview.current) preview.current.srcObject = mode === 'video' ? s : null
+      for (const v of [preview.current, previewBg.current]) if (v) v.srcObject = mode === 'video' ? s : null
       setReady(true)
       setPhase('setup')
     } catch (e) {
@@ -70,6 +105,26 @@ export function Record() {
       setError(isPermissionError(e) ? '' : 'Не получилось включить камеру или микрофон')
     }
   }, [mode, facing])
+
+  function switchCamera() {
+    if (cameras.length < 2) return
+    const i = cameras.findIndex((c) => c.id === cameraId)
+    const next = cameras[(i + 1) % cameras.length]
+    saveCameraPref(facing, { deviceId: next.id, zoom: undefined })
+    openStream()
+  }
+
+  async function changeZoom(v: number) {
+    const t = stream.current?.getVideoTracks()[0]
+    if (!t || !zoom) return
+    try {
+      await setZoom(t, v)
+      setZoomState({ ...zoom, value: v })
+      saveCameraPref(facing, { zoom: v })
+    } catch {
+      // камера передумала — оставляем как есть
+    }
+  }
 
   useEffect(() => {
     if (phase === 'setup' || phase === 'denied' || phase === 'error') openStream()
@@ -126,7 +181,8 @@ export function Record() {
     const s = stream.current
     if (!s) return
     const mime = pickMime(mode)
-    const rec = new MediaRecorder(s, mime ? { mimeType: mime } : undefined)
+    // Кадр теперь без обрезки и может быть крупнее — ограничиваем битрейт, чтобы минута весила ~45 МБ.
+    const rec = new MediaRecorder(s, { ...(mime ? { mimeType: mime } : {}), ...(mode === 'video' ? { videoBitsPerSecond: 6_000_000 } : {}) })
     chunks.current = []
     discard.current = false
     rec.ondataavailable = (e) => e.data.size && chunks.current.push(e.data)
@@ -226,7 +282,11 @@ export function Record() {
   return (
     <main className="record">
       {mode === 'video' ? (
-        <video ref={preview} className={facing === 'user' ? 'record-preview mirror' : 'record-preview'} autoPlay muted playsInline />
+        // Кадр показываем целиком, а по краям — размытый он же: так же сервер собирает видео для ленты.
+        <>
+          <video ref={previewBg} className={'record-preview-bg' + (facing === 'user' ? ' mirror' : '')} autoPlay muted playsInline aria-hidden />
+          <video ref={preview} className={facing === 'user' ? 'record-preview mirror' : 'record-preview'} autoPlay muted playsInline />
+        </>
       ) : (
         <div className="record-preview record-audio"><div className={busy ? 'mic-pulse on' : 'mic-pulse'}>🎙</div></div>
       )}
@@ -235,7 +295,14 @@ export function Record() {
         {!busy && <button className="icon-btn light" onClick={() => { stopStream(); navigate(-1) }} aria-label="Закрыть">✕</button>}
         {busy && <span className="rec-timer"><span className="rec-dot" /> {Math.floor(elapsed)} / {limit} с</span>}
         {!busy && mode === 'video' && (
-          <button className="icon-btn light" onClick={() => setFacing(facing === 'user' ? 'environment' : 'user')} aria-label="Сменить камеру">⟲</button>
+          <span className="record-top-right">
+            {cameras.length > 1 && (
+              <button className="chip camera-chip" onClick={switchCamera} aria-label="Другой объектив">
+                {cameras.find((c) => c.id === cameraId)?.ultra ? 'Широкий' : 'Объектив'} ⇄
+              </button>
+            )}
+            <button className="icon-btn light" onClick={() => setFacing(facing === 'user' ? 'environment' : 'user')} aria-label="Сменить камеру">⟲</button>
+          </span>
         )}
       </div>
 
@@ -258,6 +325,15 @@ export function Record() {
 
       {phase === 'setup' && (
         <div className="record-panel">
+          {mode === 'video' && zoom && zoomStops(zoom).length > 1 && (
+            <div className="chips" role="radiogroup" aria-label="Зум">
+              {zoomStops(zoom).map((v) => (
+                <button key={v} className="chip" role="radio" aria-checked={Math.abs(zoom.value - v) < 0.01} aria-pressed={Math.abs(zoom.value - v) < 0.01} onClick={() => changeZoom(v)}>
+                  {fmtZoom(v)}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="segmented" role="radiogroup">
             <button role="radio" aria-checked={mode === 'video'} onClick={() => setMode('video')}>Видео</button>
             <button role="radio" aria-checked={mode === 'audio'} onClick={() => setMode('audio')}>Только звук</button>
