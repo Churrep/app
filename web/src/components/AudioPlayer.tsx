@@ -2,8 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { fmtDuration } from '../types'
 import { Waveform } from './Waveform'
 
-// Плеер с волной. Только один плеер на странице играет одновременно.
-let current: HTMLAudioElement | null = null
+// Плеер с волной. Только один плеер на странице играет одновременно (включая микшер дорожек).
+type Pausable = { pause: () => void }
+let current: Pausable | null = null
+
+// takeOver ставит p текущим играющим и останавливает предыдущий.
+export function takeOver(p: Pausable) {
+  if (current && current !== p) current.pause()
+  current = p
+}
 
 export function AudioPlayer({ src, peaks, durationMs, label }: { src: string; peaks: number[]; durationMs: number; label?: string }) {
   const ref = useRef<HTMLAudioElement>(null)
@@ -19,8 +26,7 @@ export function AudioPlayer({ src, peaks, durationMs, label }: { src: string; pe
     const a = ref.current
     if (!a) return
     if (a.paused) {
-      if (current && current !== a) current.pause()
-      current = a
+      takeOver(a)
       a.play().catch(() => setPlaying(false))
     } else {
       a.pause()

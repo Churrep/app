@@ -106,6 +106,16 @@ export type Spot = {
   responses_count: number
   is_member: boolean
   my_response: { id: string; status: SpotResponse['status'] } | null
+  stems?: SpotStem[] // отдельные дорожки, только в карточке места
+}
+
+export type SpotStem = {
+  id: string
+  position: number
+  instrument_id: string
+  url: string
+  peaks: number[]
+  duration_ms: number
 }
 
 export type SpotResponse = {

@@ -183,6 +183,20 @@ func TestBandsSpotsResponses(t *testing.T) {
 	dbExec(t, pool, `INSERT INTO open_spots (id, band_id, instrument_id, song_title, backing_key, backing_duration_ms, bpm, key, genre_id,
 		own_song_confirmed, status, created_by) VALUES ($1, $2, 'bass', 'Дождь', 'backing/x.m4a', 180000, 120, 'Am', 'rock', true, 'open', $3)`,
 		spotID, bandID, leaderID)
+	dbExec(t, pool, `INSERT INTO spot_stems (spot_id, position, instrument_id, stem_key, peaks, duration_ms) VALUES
+		($1, 1, 'guitar', 'stems/g.m4a', '[0.5]', 180000), ($1, 2, 'drums', 'stems/d.m4a', '[]', 179000), ($1, 3, 'keys', '', '[]', 0)`, spotID)
+
+	// Карточка места отдаёт обработанные дорожки по порядку, список мест — без дорожек.
+	rec = do(s, "GET", "/spots/"+spotID, "", bassist)
+	expect(t, rec, 200, "")
+	stems, _ := jsonBody(t, rec)["stems"].([]any)
+	if len(stems) != 2 || stems[0].(map[string]any)["instrument_id"] != "guitar" || stems[0].(map[string]any)["url"] == "" ||
+		stems[1].(map[string]any)["instrument_id"] != "drums" {
+		t.Fatalf("stems: %v", stems)
+	}
+	if _, ok := jsonBody(t, do(s, "GET", "/spots", "", bassist))["items"].([]any)[0].(map[string]any)["stems"]; ok {
+		t.Fatal("spot list must not include stems")
+	}
 
 	// Басист видит место, лидер — нет (это его группа), но видит в «Мои места».
 	if n := len(jsonBody(t, do(s, "GET", "/spots", "", bassist))["items"].([]any)); n != 1 {

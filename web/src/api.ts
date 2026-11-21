@@ -45,10 +45,15 @@ export const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Чт
 
 // Загрузка файла с прогрессом. Поля идут до файла: сервер читает поток по порядку.
 export function upload<T>(path: string, fields: Record<string, string>, file: Blob, filename: string, onProgress?: (p: number) => void): Promise<T> {
+  return uploadFiles(path, fields, [{ field: 'file', file, filename }], onProgress)
+}
+
+// uploadFiles — несколько файлов в одном запросе, каждый в своём поле формы.
+export function uploadFiles<T>(path: string, fields: Record<string, string>, files: { field: string; file: Blob; filename: string }[], onProgress?: (p: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const fd = new FormData()
     for (const [k, v] of Object.entries(fields)) fd.append(k, v)
-    fd.append('file', file, filename)
+    for (const f of files) fd.append(f.field, f.file, f.filename)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api' + path)
     xhr.withCredentials = true

@@ -252,6 +252,19 @@ input[type='range'] { width: 100%; height: 40px; accent-color: var(--accent); }
 .player { display: flex; gap: 12px; align-items: center; background: var(--surface); border-radius: 14px; padding: 10px 12px; }
 .player-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .play-btn { width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-text); font-size: 16px; cursor: pointer; }
+.play-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* Микшер дорожек места */
+.mixer { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border-radius: 14px; padding: 12px; }
+.mixer-head { display: flex; gap: 12px; align-items: center; }
+.mixer-track { display: grid; grid-template-columns: minmax(96px, 38%) 1fr; gap: 10px; align-items: center; }
+.mixer-toggle { min-height: 40px; padding: 0 12px; font-size: 14px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mixer-track.off .waveform { opacity: 0.45; }
+
+/* Дорожки в форме нового места */
+.stem-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface); }
+.stem-row-head { display: flex; align-items: center; gap: 8px; }
+.stem-row-head > .input { flex: 1; min-width: 0; }
 
 /* Обложка «только звук» */
 .audio-cover { width: 100%; height: 100%; min-height: 240px; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 24px; color: #fff; }

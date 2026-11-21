@@ -4,6 +4,7 @@ package tracks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,6 +18,9 @@ import (
 )
 
 const MaxBackingDuration = 5 * time.Minute
+
+// MaxStems — сколько отдельных дорожек (кроме полного минуса) можно приложить к месту.
+const MaxStems = 8
 
 type Service struct {
 	db *pgxpool.Pool
@@ -113,6 +117,23 @@ type Spot struct {
 	IsMember          bool
 	MyResponseID      string
 	MyResponseStatus  string
+	Stems             []Stem // только в GetSpot, только обработанные
+}
+
+// Stem — отдельная дорожка песни под один инструмент.
+type Stem struct {
+	ID           string
+	Position     int
+	InstrumentID string
+	Key          string
+	Peaks        []float64
+	DurationMS   int
+}
+
+// StemInput — загруженная дорожка: инструмент и ключ сырого файла в хранилище.
+type StemInput struct {
+	InstrumentID string
+	RawKey       string
 }
 
 // Статус места для интерфейса: срок вышел — тоже «закрыто».
@@ -151,6 +172,7 @@ type SpotInput struct {
 	Description  string
 	Deadline     string // ГГГГ-ММ-ДД, можно пусто
 	OwnSong      bool
+	Stems        []StemInput // по порядку; полный минус сюда не входит
 }
 
 func (s *Service) CreateSpot(ctx context.Context, userID string, in SpotInput, rawKey string, now time.Time) (Spot, error) {
@@ -172,6 +194,13 @@ func (s *Service) CreateSpot(ctx context.Context, userID string, in SpotInput, r
 		return Spot{}, apperr.Invalid("key", "Тональность — коротко, например Am или F#")
 	case utf8.RuneCountInString(in.Description) > 300:
 		return Spot{}, apperr.Invalid("description", "Текст — до 300 символов")
+	case len(in.Stems) > MaxStems:
+		return Spot{}, apperr.Invalid("stems", "Не больше 8 отдельных дорожек")
+	}
+	for _, st := range in.Stems {
+		if !profile.IsInstrument(st.InstrumentID) {
+			return Spot{}, apperr.Invalid("stems", "Выбери инструмент для каждой дорожки")
+		}
 	}
 	var deadline *time.Time
 	if in.Deadline != "" {
@@ -191,12 +220,26 @@ func (s *Service) CreateSpot(ctx context.Context, userID string, in SpotInput, r
 		return Spot{}, apperr.Forbidden("Места создают только участники группы")
 	}
 
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return Spot{}, err
+	}
+	defer tx.Rollback(ctx)
 	var id string
-	err = s.db.QueryRow(ctx, `INSERT INTO open_spots (id, band_id, instrument_id, song_title, raw_key, bpm, key, genre_id,
+	err = tx.QueryRow(ctx, `INSERT INTO open_spots (id, band_id, instrument_id, song_title, raw_key, bpm, key, genre_id,
 		description, deadline, own_song_confirmed, created_by)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10) RETURNING id::text`,
 		in.BandID, in.InstrumentID, in.SongTitle, rawKey, in.BPM, in.Key, in.GenreID, in.Description, deadline, userID).Scan(&id)
 	if err != nil {
+		return Spot{}, err
+	}
+	for i, st := range in.Stems {
+		if _, err := tx.Exec(ctx, `INSERT INTO spot_stems (spot_id, position, instrument_id, raw_key) VALUES ($1, $2, $3, $4)`,
+			id, i+1, st.InstrumentID, st.RawKey); err != nil {
+			return Spot{}, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return Spot{}, err
 	}
 	s.enqueueSpot(id)
@@ -216,22 +259,108 @@ func (s *Service) processBacking(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	type stemJob struct {
+		id, raw, key, instrument string
+		position                int
+		peaks        []float64
+		dur          time.Duration
+	}
+	rows, err := s.db.Query(ctx, `SELECT id::text, raw_key, position, instrument_id FROM spot_stems WHERE spot_id = $1 ORDER BY position`, id)
+	if err != nil {
+		return err
+	}
+	stems, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (stemJob, error) {
+		var j stemJob
+		return j, r.Scan(&j.id, &j.raw, &j.position, &j.instrument)
+	})
+	if err != nil {
+		return err
+	}
+
+	// Ключи выходных файлов постоянные: если сервер перезапустится посреди обработки, повтор их перезапишет.
 	key := "backing/" + id + ".m4a"
+	outKeys := []string{key}
 	peaks, dur, err := s.convertAudio(ctx, raw, key, "192k", 400)
 	if err == nil && dur > MaxBackingDuration+time.Second {
 		err = &media.UserError{Message: "Минус длиннее 5 минут"}
 	}
+	for i := range stems {
+		if err != nil {
+			break
+		}
+		j := &stems[i]
+		j.key = "stems/" + j.id + ".m4a"
+		outKeys = append(outKeys, j.key)
+		j.peaks, j.dur, err = s.convertAudio(ctx, j.raw, j.key, "192k", 400)
+		if err == nil && j.dur > MaxBackingDuration+time.Second {
+			err = &media.UserError{Message: "длиннее 5 минут"}
+		}
+		if err != nil {
+			err = &media.UserError{Message: fmt.Sprintf("Дорожка «%s»: %s", instrumentName(j.instrument), lowerFirst(media.ErrorText(err)))}
+		}
+	}
 	if err != nil {
-		s.m.Storage.Remove(key)
+		s.m.Storage.Remove(outKeys...)
 		_, dbErr := s.db.Exec(ctx, `UPDATE open_spots SET status = 'failed', error = $2 WHERE id = $1`, id, media.ErrorText(err))
 		return errors.Join(err, dbErr)
 	}
-	_, err = s.db.Exec(ctx, `UPDATE open_spots SET status = 'open', backing_key = $2, backing_peaks = $3,
-		backing_duration_ms = $4, raw_key = '' WHERE id = $1`, id, key, media.PeaksJSON(peaks), dur.Milliseconds())
-	if err == nil {
-		s.m.Storage.Remove(raw)
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
 	}
-	return err
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `UPDATE open_spots SET status = 'open', backing_key = $2, backing_peaks = $3,
+		backing_duration_ms = $4, raw_key = '' WHERE id = $1`, id, key, media.PeaksJSON(peaks), dur.Milliseconds()); err != nil {
+		return err
+	}
+	for _, j := range stems {
+		if _, err := tx.Exec(ctx, `UPDATE spot_stems SET stem_key = $2, peaks = $3, duration_ms = $4, raw_key = '' WHERE id = $1`,
+			j.id, j.key, media.PeaksJSON(j.peaks), j.dur.Milliseconds()); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.m.Storage.Remove(raw)
+	for _, j := range stems {
+		s.m.Storage.Remove(j.raw)
+	}
+	return nil
+}
+
+func instrumentName(id string) string {
+	for _, it := range profile.Instruments {
+		if it.ID == id {
+			return it.Name
+		}
+	}
+	return id
+}
+
+func lowerFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if n == 0 {
+		return s
+	}
+	return strings.ToLower(string(r)) + s[n:]
+}
+
+// stems — обработанные дорожки места по порядку.
+func (s *Service) stems(ctx context.Context, spotID string) ([]Stem, error) {
+	rows, err := s.db.Query(ctx, `SELECT id::text, position, instrument_id, stem_key, peaks, duration_ms FROM spot_stems
+		WHERE spot_id = $1 AND stem_key <> '' ORDER BY position`, spotID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Stem, error) {
+		var st Stem
+		var peaks []byte
+		err := r.Scan(&st.ID, &st.Position, &st.InstrumentID, &st.Key, &peaks, &st.DurationMS)
+		st.Peaks = media.ParsePeaks(peaks)
+		return st, err
+	})
 }
 
 func (s *Service) convertAudio(ctx context.Context, rawKey, outKey, bitrate string, bins int) ([]float64, time.Duration, error) {
@@ -282,6 +411,10 @@ func (s *Service) GetSpot(ctx context.Context, userID, id string) (Spot, error) 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Spot{}, apperr.NotFound("Место не найдено")
 	}
+	if err != nil {
+		return Spot{}, err
+	}
+	sp.Stems, err = s.stems(ctx, id)
 	return sp, err
 }
 

@@ -102,27 +102,44 @@ func (s *Server) url(key string) string { return s.ext.Media.Signer.URL(key) }
 
 // readUpload читает multipart: поле file сохраняется в хранилище как сырой файл, остальные поля — в map.
 func (s *Server) readUpload(w http.ResponseWriter, r *http.Request, maxBytes int64) (map[string]string, string, bool) {
+	fields, files, ok := s.readUploadFiles(w, r, maxBytes, maxBytes, func(name string) bool { return name == "file" })
+	if !ok {
+		return nil, "", false
+	}
+	if files["file"] == "" {
+		writeError(w, http.StatusBadRequest, "no_file", "Файл не пришёл. Попробуй ещё раз")
+		return nil, "", false
+	}
+	return fields, files["file"], true
+}
+
+// readUploadFiles читает multipart с несколькими файлами. Части-файлы, для которых isFile(имя поля) верно,
+// сохраняются в хранилище как сырые файлы (имя поля → ключ), остальные поля — в fields.
+// maxBytes ограничивает весь запрос, maxFileBytes — каждый файл. При ошибке сохранённые файлы удаляются.
+func (s *Server) readUploadFiles(w http.ResponseWriter, r *http.Request, maxBytes, maxFileBytes int64, isFile func(string) bool) (map[string]string, map[string]string, bool) {
 	if r.Header.Get("X-Upload") != "1" {
 		writeError(w, http.StatusUnsupportedMediaType, "upload_required", "Нужна загрузка файла")
-		return nil, "", false
+		return nil, nil, false
 	}
 	if err := s.ext.Media.FFErr; err != nil {
 		s.log.Error("upload without ffmpeg", "err", err)
 		writeError(w, http.StatusServiceUnavailable, "media_unavailable", "Обработка записей временно не работает. Попробуй позже")
-		return nil, "", false
+		return nil, nil, false
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	mr, err := r.MultipartReader()
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_upload", "Не получилось прочитать файл")
-		return nil, "", false
+		return nil, nil, false
 	}
 	fields := map[string]string{}
-	key := ""
-	fail := func(status int, code, msg string) (map[string]string, string, bool) {
-		s.ext.Media.Storage.Remove(key)
+	files := map[string]string{}
+	fail := func(status int, code, msg string) (map[string]string, map[string]string, bool) {
+		for _, k := range files {
+			s.ext.Media.Storage.Remove(k)
+		}
 		writeError(w, status, code, msg)
-		return nil, "", false
+		return nil, nil, false
 	}
 	for {
 		part, err := mr.NextPart()
@@ -136,17 +153,22 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request, maxBytes int
 			}
 			return fail(http.StatusBadRequest, "bad_upload", "Загрузка оборвалась. Попробуй ещё раз")
 		}
-		if part.FormName() == "file" && part.FileName() != "" {
-			if key != "" {
+		if name := part.FormName(); isFile(name) && part.FileName() != "" {
+			if files[name] != "" {
 				return fail(http.StatusBadRequest, "bad_upload", "Нужен один файл")
 			}
-			key = media.NewKey("raw", "")
-			if _, err := s.ext.Media.Storage.Save(key, part); err != nil {
+			key := media.NewKey("raw", "")
+			files[name] = key
+			n, err := s.ext.Media.Storage.Save(key, io.LimitReader(part, maxFileBytes+1))
+			if err != nil {
 				var tooBig *http.MaxBytesError
 				if errors.As(err, &tooBig) {
 					return fail(http.StatusRequestEntityTooLarge, "too_large", "Файл слишком большой")
 				}
 				return fail(http.StatusBadRequest, "bad_upload", "Загрузка оборвалась. Попробуй ещё раз")
+			}
+			if n > maxFileBytes {
+				return fail(http.StatusRequestEntityTooLarge, "too_large", "Файл слишком большой")
 			}
 			continue
 		}
@@ -156,10 +178,7 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request, maxBytes int
 		}
 		fields[part.FormName()] = string(b)
 	}
-	if key == "" {
-		return fail(http.StatusBadRequest, "no_file", "Файл не пришёл. Попробуй ещё раз")
-	}
-	return fields, key, true
+	return fields, files, true
 }
 
 func (s *Server) uploadAllowed(w http.ResponseWriter, u profile.User) bool {
@@ -328,24 +347,34 @@ type bandView struct {
 }
 
 type spotView struct {
-	ID                string    `json:"id"`
-	Band              bandRef   `json:"band"`
-	InstrumentID      string    `json:"instrument_id"`
-	SongTitle         string    `json:"song_title"`
-	BackingURL        string    `json:"backing_url"`
-	BackingPeaks      []float64 `json:"backing_peaks"`
-	BackingDurationMS int       `json:"backing_duration_ms"`
-	BPM               int       `json:"bpm"`
-	Key               string    `json:"key"`
-	GenreID           string    `json:"genre_id"`
-	Description       string    `json:"description"`
-	Deadline          *string   `json:"deadline"`
-	Status            string    `json:"status"` // processing / open / expired / closed / failed
-	Error             string    `json:"error,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	ResponsesCount    int       `json:"responses_count"`
-	IsMember          bool      `json:"is_member"`
-	MyResponse        *respRef  `json:"my_response"`
+	ID                string     `json:"id"`
+	Band              bandRef    `json:"band"`
+	InstrumentID      string     `json:"instrument_id"`
+	SongTitle         string     `json:"song_title"`
+	BackingURL        string     `json:"backing_url"`
+	BackingPeaks      []float64  `json:"backing_peaks"`
+	BackingDurationMS int        `json:"backing_duration_ms"`
+	BPM               int        `json:"bpm"`
+	Key               string     `json:"key"`
+	GenreID           string     `json:"genre_id"`
+	Description       string     `json:"description"`
+	Deadline          *string    `json:"deadline"`
+	Status            string     `json:"status"` // processing / open / expired / closed / failed
+	Error             string     `json:"error,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	ResponsesCount    int        `json:"responses_count"`
+	IsMember          bool       `json:"is_member"`
+	MyResponse        *respRef   `json:"my_response"`
+	Stems             []stemView `json:"stems,omitempty"` // только в карточке места
+}
+
+type stemView struct {
+	ID           string    `json:"id"`
+	Position     int       `json:"position"`
+	InstrumentID string    `json:"instrument_id"`
+	URL          string    `json:"url"`
+	Peaks        []float64 `json:"peaks"`
+	DurationMS   int       `json:"duration_ms"`
 }
 
 type bandRef struct {
@@ -374,6 +403,9 @@ func (s *Server) spotView(sp tracks.Spot) spotView {
 	}
 	if sp.MyResponseID != "" {
 		v.MyResponse = &respRef{sp.MyResponseID, sp.MyResponseStatus}
+	}
+	for _, st := range sp.Stems {
+		v.Stems = append(v.Stems, stemView{st.ID, st.Position, st.InstrumentID, s.url(st.Key), st.Peaks, st.DurationMS})
 	}
 	return v
 }
@@ -469,22 +501,49 @@ func (s *Server) handleListSpots(w http.ResponseWriter, r *http.Request, u profi
 	writeJSON(w, http.StatusOK, map[string]any{"items": s.spotViews(list)})
 }
 
+// spotUploadMax — весь запрос на новое место: минус и дорожки вместе.
+const spotUploadMax = 250 << 20
+
 func (s *Server) handleCreateSpot(w http.ResponseWriter, r *http.Request, u profile.User) {
 	if !s.uploadAllowed(w, u) {
 		return
 	}
-	fields, key, ok := s.readUpload(w, r, 50<<20)
+	// file — полный минус (обязателен), stem_1…stem_8 — отдельные дорожки, stem_N_instrument — их инструменты.
+	stemField := func(i int) string { return "stem_" + strconv.Itoa(i) }
+	fields, files, ok := s.readUploadFiles(w, r, spotUploadMax, 50<<20, func(name string) bool {
+		if name == "file" {
+			return true
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(name, "stem_"))
+		return strings.HasPrefix(name, "stem_") && err == nil && n >= 1 && n <= tracks.MaxStems && name == stemField(n)
+	})
 	if !ok {
 		return
+	}
+	removeAll := func() {
+		for _, k := range files {
+			s.ext.Media.Storage.Remove(k)
+		}
+	}
+	if files["file"] == "" {
+		removeAll()
+		writeError(w, http.StatusBadRequest, "no_file", "Загрузи полный минус")
+		return
+	}
+	var stems []tracks.StemInput
+	for i := 1; i <= tracks.MaxStems; i++ {
+		if key := files[stemField(i)]; key != "" {
+			stems = append(stems, tracks.StemInput{InstrumentID: fields[stemField(i)+"_instrument"], RawKey: key})
+		}
 	}
 	bpm, _ := strconv.Atoi(fields["bpm"])
 	sp, err := s.ext.Tracks.CreateSpot(r.Context(), u.ID, tracks.SpotInput{
 		BandID: fields["band_id"], InstrumentID: fields["instrument_id"], SongTitle: fields["song_title"], BPM: bpm,
 		Key: fields["key"], GenreID: fields["genre_id"], Description: fields["description"], Deadline: fields["deadline"],
-		OwnSong: fields["own_song"] == "true",
-	}, key, s.now())
+		OwnSong: fields["own_song"] == "true", Stems: stems,
+	}, files["file"], s.now())
 	if err != nil {
-		s.ext.Media.Storage.Remove(key)
+		removeAll()
 		s.fail(w, "create spot", err)
 		return
 	}

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import { api, errorText, upload } from '../api'
+import { api, errorText, uploadFiles } from '../api'
 import { AudioPlayer } from '../components/AudioPlayer'
+import { StemMixer } from '../components/StemMixer'
 import { Header } from '../components/Header'
 import { ChipPicker } from '../components/Pickers'
 import { Avatar } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { useMe } from '../session'
-import type { Band, Catalog, Spot, SpotResponse } from '../types'
+import type { Band, Catalog, Spot, SpotResponse, SpotStem } from '../types'
 import { fmtDate, nameOf } from '../types'
 
 function useLoad<T>(path: string | null) {
@@ -183,6 +184,28 @@ function CreateBand({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
 
 // ---------- Новое место ----------
 
+const MAX_STEMS = 8
+const MAX_FILE = 50 * 1024 * 1024
+const MAX_TOTAL = 250 * 1024 * 1024
+const AUDIO_ACCEPT = '.mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav'
+
+// checkAudio — пустая строка, если файл подходит: до 50 МБ и до 5 минут.
+async function checkAudio(f: File, what: string) {
+  if (f.size > MAX_FILE) return 'Файл больше 50 МБ'
+  const dur = await new Promise<number>((resolve) => {
+    const a = new Audio()
+    const url = URL.createObjectURL(f)
+    a.preload = 'metadata'
+    a.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(a.duration) }
+    a.onerror = () => { URL.revokeObjectURL(url); resolve(NaN) }
+    a.src = url
+  })
+  return dur > 5 * 60 + 1 ? `${what} длиннее 5 минут` : ''
+}
+
+type StemDraft = { uid: number; instrument: string; file: File | null; error: string }
+let stemUid = 0
+
 export function NewSpot() {
   const { catalog } = useMe()
   const navigate = useNavigate()
@@ -201,33 +224,46 @@ export function NewSpot() {
   const [progress, setProgress] = useState(-1)
   const [error, setError] = useState('')
 
+  const [stems, setStems] = useState<StemDraft[]>([])
+
   async function pick(f: File | undefined) {
     setFileError('')
     setFile(null)
     if (!f) return
-    if (f.size > 50 * 1024 * 1024) return setFileError('Файл больше 50 МБ')
-    const dur = await new Promise<number>((resolve) => {
-      const a = new Audio()
-      a.preload = 'metadata'
-      a.onloadedmetadata = () => resolve(a.duration)
-      a.onerror = () => resolve(NaN)
-      a.src = URL.createObjectURL(f)
-    })
-    if (dur > 5 * 60 + 1) return setFileError('Минус длиннее 5 минут')
+    const err = await checkAudio(f, 'Минус')
+    if (err) return setFileError(err)
     setFile(f)
   }
 
-  const valid = file && instrument && genre && Number(bpm) >= 30 && Number(bpm) <= 300 && own
+  const updateStem = (uid: number, patch: Partial<StemDraft>) =>
+    setStems((list) => list.map((s) => (s.uid === uid ? { ...s, ...patch } : s)))
+
+  async function pickStem(uid: number, f: File | undefined) {
+    updateStem(uid, { file: null, error: '' })
+    if (!f) return
+    const err = await checkAudio(f, 'Дорожка')
+    updateStem(uid, err ? { error: err } : { file: f })
+  }
+
+  const totalSize = (file?.size ?? 0) + stems.reduce((n, s) => n + (s.file?.size ?? 0), 0)
+  const stemsValid = stems.every((s) => s.instrument && s.file)
+  const valid = file && instrument && genre && Number(bpm) >= 30 && Number(bpm) <= 300 && own && stemsValid && totalSize <= MAX_TOTAL
 
   async function save() {
     if (!file) return
     setError('')
     setProgress(0)
+    const fields: Record<string, string> = {
+      band_id: bandID, instrument_id: instrument, song_title: title.trim(), bpm, key: key.trim(), genre_id: genre,
+      description: description.trim(), deadline, own_song: String(own),
+    }
+    const files = [{ field: 'file', file, filename: file.name }]
+    stems.forEach((s, i) => {
+      fields[`stem_${i + 1}_instrument`] = s.instrument
+      files.push({ field: `stem_${i + 1}`, file: s.file!, filename: s.file!.name })
+    })
     try {
-      const spot = await upload<Spot>('/spots', {
-        band_id: bandID, instrument_id: instrument, song_title: title.trim(), bpm, key: key.trim(), genre_id: genre,
-        description: description.trim(), deadline, own_song: String(own),
-      }, file, file.name, setProgress)
+      const spot = await uploadFiles<Spot>('/spots', fields, files, setProgress)
       navigate(`/tracks/${spot.id}`, { replace: true })
     } catch (e) {
       setError(errorText(e))
@@ -240,11 +276,36 @@ export function NewSpot() {
     <main className="screen">
       <Header title="Новое место" back />
       <div className="screen-body stack-lg">
-        <label className="field">
-          <span className="label">Минус: mp3, m4a или wav, до 5 минут и 50 МБ</span>
-          <input className="input file-input" type="file" accept=".mp3,.m4a,.wav,audio/mpeg,audio/mp4,audio/wav,audio/x-wav" onChange={(e) => pick(e.target.files?.[0])} />
-          {fileError && <span className="error-text">{fileError}</span>}
-        </label>
+        <section className="field">
+          <span className="label">Дорожки: mp3, m4a или wav, каждая до 5 минут и 50 МБ</span>
+          <div className="stem-row">
+            <strong>1. Полный минус — обязательно</strong>
+            <span className="small muted">Вся песня без недостающей партии. Под него музыканты записывают отклик.</span>
+            <input className="input file-input" type="file" accept={AUDIO_ACCEPT} onChange={(e) => pick(e.target.files?.[0])} />
+            {fileError && <span className="error-text">{fileError}</span>}
+          </div>
+          {stems.map((s, i) => (
+            <div key={s.uid} className="stem-row">
+              <div className="stem-row-head">
+                <strong>{i + 2}.</strong>
+                <select className="input" value={s.instrument} aria-label="Инструмент дорожки" onChange={(e) => updateStem(s.uid, { instrument: e.target.value })}>
+                  <option value="">Какой инструмент</option>
+                  {catalog.instruments.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                </select>
+                <button className="btn-link" aria-label="Убрать дорожку" onClick={() => setStems((list) => list.filter((x) => x.uid !== s.uid))}>✕</button>
+              </div>
+              <input className="input file-input" type="file" accept={AUDIO_ACCEPT} onChange={(e) => pickStem(s.uid, e.target.files?.[0])} />
+              {s.error && <span className="error-text">{s.error}</span>}
+            </div>
+          ))}
+          {stems.length < MAX_STEMS && (
+            <button className="btn btn-secondary" onClick={() => setStems((list) => [...list, { uid: ++stemUid, instrument: '', file: null, error: '' }])}>
+              + Добавить дорожку (гитара, бас, барабаны…)
+            </button>
+          )}
+          {stems.length > 0 && !stemsValid && <span className="small muted">Для каждой дорожки выбери инструмент и файл</span>}
+          {totalSize > MAX_TOTAL && <span className="error-text">Все файлы вместе — больше 250 МБ</span>}
+        </section>
         <div className="field">
           <span className="label">Кого не хватает</span>
           <ChipPicker items={catalog.instruments} value={instrument ? [instrument] : []} onChange={(v) => setInstrument(v[v.length - 1] ?? '')} />
@@ -297,6 +358,13 @@ export function NewSpot() {
 
 // ---------- Карточка места ----------
 
+// stemLabel — название инструмента; одинаковые нумеруются: «Гитара 1», «Гитара 2».
+function stemLabel(all: SpotStem[], st: SpotStem, catalog: Catalog) {
+  const name = nameOf(catalog.instruments, st.instrument_id)
+  const same = all.filter((x) => x.instrument_id === st.instrument_id)
+  return same.length > 1 ? `${name} ${same.indexOf(st) + 1}` : name
+}
+
 export function SpotScreen() {
   const { id = '' } = useParams()
   const { catalog } = useMe()
@@ -327,7 +395,18 @@ export function SpotScreen() {
           {spot.deadline ? ` · до ${fmtDate(spot.deadline)}` : ''}
         </p>
         {spotStatus[spot.status] && <p className="note">{spot.status === 'failed' && spot.error ? spot.error : spotStatus[spot.status]}</p>}
-        {spot.backing_url && <AudioPlayer src={spot.backing_url} peaks={spot.backing_peaks} durationMs={spot.backing_duration_ms} label="Минус" />}
+        {spot.backing_url && (spot.stems?.length ? (
+          <StemMixer
+            key={spot.id}
+            tracks={[
+              { id: 'backing', label: 'Полный минус', url: spot.backing_url, peaks: spot.backing_peaks, durationMs: spot.backing_duration_ms },
+              ...spot.stems.map((st) => ({ id: st.id, label: stemLabel(spot.stems!, st, catalog), url: st.url, peaks: st.peaks, durationMs: st.duration_ms })),
+            ]}
+            initial={spot.stems.map((st) => st.id)}
+          />
+        ) : (
+          <AudioPlayer src={spot.backing_url} peaks={spot.backing_peaks} durationMs={spot.backing_duration_ms} label="Минус" />
+        ))}
         {spot.my_response && <p className="note">{responseText[spot.my_response.status]}</p>}
         {canRecord && (
           <Link className="btn btn-primary" to={`/tracks/${spot.id}/record`}>
