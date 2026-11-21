@@ -1,20 +1,25 @@
 // Запись микрофона через AudioWorklet в сыром PCM.
-// В отличие от MediaRecorder, мы знаем точное время первого сэмпла по часам AudioContext,
-// поэтому партию можно выровнять с минусом до миллисекунд (остаётся только задержка железа).
+// В отличие от MediaRecorder, мы знаем номер кадра каждого сэмпла по часам AudioContext,
+// поэтому партию можно выровнять с минусом до сэмпла (остаётся только задержка железа — её меряет калибровка).
 
+// Ворклет копирует блоки по 128 сэмплов в чанк и отправляет чанк в главный поток (ArrayBuffer передаётся,
+// а не копируется). У каждого чанка — currentFrame его первого сэмпла: так запись связана с часами
+// воспроизведения, даже если браузер пропустил блоки (пропуск заполняется тишиной).
 const workletCode = `
 class PcmRecorder extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super()
-    this.chunks = []
+    this.limit = (options.processorOptions && options.processorOptions.chunk) || 4096
+    this.buf = new Float32Array(this.limit)
     this.size = 0
-    this.start = -1
+    this.startFrame = -1
+    this.framesCaptured = 0
     this.on = true
     this.port.onmessage = (e) => {
       if (e.data === 'stop') {
         this.flush()
         this.on = false
-        this.port.postMessage({ done: true })
+        this.port.postMessage({ done: true, framesCaptured: this.framesCaptured })
       }
     }
   }
@@ -22,20 +27,24 @@ class PcmRecorder extends AudioWorkletProcessor {
     if (!this.on) return false
     const ch = inputs[0] && inputs[0][0]
     if (ch) {
-      if (this.start < 0) this.start = currentTime
-      this.chunks.push(ch.slice(0))
+      // Блок не продолжает текущий чанк — отправляем чанк, новый начнётся с этого кадра.
+      if (this.size && this.startFrame + this.size !== currentFrame) this.flush()
+      if (!this.size) this.startFrame = currentFrame
+      if (this.size + ch.length > this.limit) {
+        this.flush()
+        this.startFrame = currentFrame
+      }
+      this.buf.set(ch, this.size)
       this.size += ch.length
-      if (this.size >= 16384) this.flush()
+      this.framesCaptured += ch.length
+      if (this.size >= this.limit) this.flush()
     }
     return true
   }
   flush() {
     if (!this.size) return
-    const out = new Float32Array(this.size)
-    let o = 0
-    for (const c of this.chunks) { out.set(c, o); o += c.length }
-    this.port.postMessage({ start: this.start, data: out }, [out.buffer])
-    this.chunks = []
+    const out = this.buf.slice(0, this.size)
+    this.port.postMessage({ startFrame: this.startFrame, data: out }, [out.buffer])
     this.size = 0
   }
 }
@@ -44,26 +53,35 @@ registerProcessor('pcm-recorder', PcmRecorder)
 
 const loaded = new WeakSet<BaseAudioContext>()
 
+type Chunk = { startFrame: number; data: Float32Array }
+
 export class PcmRecorder {
-  private parts: Float32Array[] = []
-  private startTime = -1
+  private chunks: Chunk[] = []
   private node: AudioWorkletNode
   private source: MediaStreamAudioSourceNode
   private sink: GainNode
   private done: Promise<void>
+  private firstChunk: Promise<void>
+  private rate: number
 
   private constructor(ctx: AudioContext, stream: MediaStream) {
+    this.rate = ctx.sampleRate
     this.source = ctx.createMediaStreamSource(stream)
-    this.node = new AudioWorkletNode(ctx, 'pcm-recorder', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit' })
+    this.node = new AudioWorkletNode(ctx, 'pcm-recorder', {
+      numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1, channelCountMode: 'explicit',
+      processorOptions: { chunk: 4096 },
+    })
     // Узел должен быть подключён к выходу, иначе браузер его не вызывает. Громкость 0 — в наушники не идёт.
     this.sink = ctx.createGain()
     this.sink.gain.value = 0
     this.source.connect(this.node).connect(this.sink).connect(ctx.destination)
+    let gotFirst = () => {}
+    this.firstChunk = new Promise((r) => (gotFirst = r))
     this.done = new Promise((resolve) => {
       this.node.port.onmessage = (e) => {
         if (e.data.done) return resolve()
-        if (this.startTime < 0) this.startTime = e.data.start
-        this.parts.push(e.data.data)
+        this.chunks.push({ startFrame: e.data.startFrame, data: e.data.data })
+        gotFirst()
       }
     })
   }
@@ -78,21 +96,28 @@ export class PcmRecorder {
     return new PcmRecorder(ctx, stream)
   }
 
-  // Останавливает запись: время первого сэмпла (секунды по часам ctx) и все сэмплы.
-  async stop(): Promise<{ startTime: number; samples: Float32Array }> {
+  // started — пришли первые сэмплы с микрофона (вход реально пишется).
+  started(timeoutMs = 3000) {
+    return Promise.race([
+      this.firstChunk,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Микрофон не присылает звук. Проверь, что он не занят другим приложением')), timeoutMs)),
+    ])
+  }
+
+  // Останавливает запись: номер кадра первого сэмпла, его время (секунды по часам ctx) и все сэмплы.
+  // Чанки раскладываются по своим номерам кадров; пропуски — тишина.
+  async stop(): Promise<{ startFrame: number; startTime: number; samples: Float32Array }> {
     this.node.port.postMessage('stop')
     await this.done
     this.source.disconnect()
     this.node.disconnect()
     this.sink.disconnect()
-    const total = this.parts.reduce((n, p) => n + p.length, 0)
-    const samples = new Float32Array(total)
-    let o = 0
-    for (const p of this.parts) {
-      samples.set(p, o)
-      o += p.length
-    }
-    return { startTime: this.startTime, samples }
+    if (!this.chunks.length) return { startFrame: 0, startTime: 0, samples: new Float32Array(0) }
+    const first = this.chunks[0].startFrame
+    const last = this.chunks[this.chunks.length - 1]
+    const samples = new Float32Array(last.startFrame + last.data.length - first)
+    for (const c of this.chunks) samples.set(c.data, c.startFrame - first)
+    return { startFrame: first, startTime: first / this.rate, samples }
   }
 }
 
@@ -111,7 +136,7 @@ export function click(ctx: AudioContext, at: number, accent: boolean) {
 
 export async function loadBuffer(ctx: AudioContext, url: string) {
   const res = await fetch(url, { credentials: 'same-origin' })
-  if (!res.ok) throw new Error('Не получилось загрузить минус')
+  if (!res.ok) throw new Error('Не получилось загрузить звук')
   return ctx.decodeAudioData(await res.arrayBuffer())
 }
 
@@ -138,51 +163,4 @@ export function encodeWav(samples: Float32Array, rate: number): Blob {
     v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true)
   }
   return new Blob([buf], { type: 'audio/wav' })
-}
-
-// Задержка «звук в наушниках → микрофон», сохранённая калибровкой. Это настройка устройства,
-// поэтому хранится в браузере.
-export function savedLatencyMs(): number | null {
-  try {
-    const v = localStorage.getItem('latency_ms')
-    return v === null ? null : Number(v)
-  } catch {
-    return null
-  }
-}
-
-export function saveLatencyMs(ms: number) {
-  try {
-    localStorage.setItem('latency_ms', String(Math.round(ms)))
-  } catch {
-    // приватный режим
-  }
-}
-
-// Калибровка: 6 щелчков, ищем их в записи микрофона, берём медиану задержки.
-export async function calibrate(ctx: AudioContext, stream: MediaStream): Promise<number> {
-  const rec = await PcmRecorder.create(ctx, stream)
-  const t0 = ctx.currentTime + 0.4
-  const times = Array.from({ length: 6 }, (_, i) => t0 + i * 0.5)
-  times.forEach((t) => click(ctx, t, true))
-  await new Promise((r) => setTimeout(r, (times[5] - ctx.currentTime + 0.6) * 1000))
-  const { startTime, samples } = await rec.stop()
-  const rate = ctx.sampleRate
-  const delays: number[] = []
-  for (const t of times) {
-    const from = Math.max(0, Math.round((t - startTime) * rate))
-    const to = Math.min(samples.length, from + Math.round(0.4 * rate))
-    let max = 0
-    for (let i = from; i < to; i++) max = Math.max(max, Math.abs(samples[i]))
-    if (max < 0.02) continue
-    for (let i = from; i < to; i++) {
-      if (Math.abs(samples[i]) > max * 0.5) {
-        delays.push(((i - from) / rate) * 1000)
-        break
-      }
-    }
-  }
-  if (delays.length < 3) throw new Error('Не услышали щелчки. Поднеси наушник к микрофону или включи динамик погромче')
-  delays.sort((a, b) => a - b)
-  return delays[Math.floor(delays.length / 2)]
 }

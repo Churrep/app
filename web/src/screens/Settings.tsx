@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { errorText } from '../api'
 import { Header } from '../components/Header'
 import { InstallGuide } from '../components/InstallGuide'
@@ -45,6 +45,12 @@ export function Settings() {
             hint={minor ? 'Пока тебе нет 18, район в профиле скрыт для всех' : undefined} />
         </section>
 
+
+        <section className="card">
+          <h3>Звук</h3>
+          <p className="small muted">Задержка между наушниками и микрофоном — чтобы записанная партия совпадала с минусом.</p>
+          <Link className="btn btn-secondary" to="/me/settings/audio">Калибровка задержки</Link>
+        </section>
 
         <section className="card">
           <h3>Приложение на экране «Домой»</h3>

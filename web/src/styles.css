@@ -254,6 +254,23 @@ input[type='range'] { width: 100%; height: 40px; accent-color: var(--accent); }
 .play-btn { width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-text); font-size: 16px; cursor: pointer; }
 .play-btn:disabled { opacity: 0.5; cursor: default; }
 
+/* Калибровка звука */
+.stack-sm { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.method-card { align-items: flex-start; }
+.method-card:disabled { opacity: 0.6; cursor: default; }
+.scheme { font-family: ui-monospace, Menlo, Consolas, monospace; background: var(--surface-2); border-radius: 8px; padding: 6px 8px; overflow-wrap: anywhere; }
+.meter { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.meter > div { height: 100%; background: #4bd48a; transition: width 0.08s linear; }
+.meter > div.clip { background: var(--danger); }
+.tap-pad {
+  flex: 1; min-height: 44vh; border: 0; border-radius: var(--radius); background: var(--accent); color: var(--accent-text);
+  font-size: 28px; font-weight: 800; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.tap-pad:active { filter: brightness(0.85); }
+.adjust-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.adjust-row .btn { flex: 0 0 auto; min-width: 52px; padding: 0 10px; }
+.adjust-row .input { width: 96px; min-height: 48px; }
+
 /* Микшер дорожек места */
 .mixer { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border-radius: 14px; padding: 12px; }
 .mixer-head { display: flex; gap: 12px; align-items: center; }

@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router'
 import { OfflineBanner } from './components/OfflineBanner'
+import { AudioCalibration } from './screens/AudioCalibration'
 import { TabsLayout } from './components/TabsLayout'
 import { Feed } from './screens/Feed'
 import { Matches, Likes } from './screens/Matches'
@@ -52,6 +53,7 @@ export default function App() {
           </Route>
           <Route path="/me/edit" element={<RequireOnboarded><EditProfile /></RequireOnboarded>} />
           <Route path="/me/settings" element={<RequireOnboarded><Settings /></RequireOnboarded>} />
+          <Route path="/me/settings/audio" element={<RequireOnboarded><AudioCalibration /></RequireOnboarded>} />
           <Route path="/users/:id" element={<RequireOnboarded><UserProfile /></RequireOnboarded>} />
           <Route path="/likes" element={<RequireOnboarded><Likes /></RequireOnboarded>} />
           <Route path="/record" element={<RequireOnboarded><Record /></RequireOnboarded>} />
