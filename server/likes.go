@@ -9,35 +9,53 @@ import (
 )
 
 func (s *Server) routesLikes(m *http.ServeMux) {
-	m.HandleFunc("POST /likes", s.withExt(s.withOnboarded(s.handleLike)))
-	m.HandleFunc("DELETE /likes/{id}", s.withExt(s.withOnboarded(s.handleUnlike)))
-	m.HandleFunc("GET /likes/incoming", s.withExt(s.withOnboarded(s.handleIncoming)))
-	m.HandleFunc("GET /likes/incoming/count", s.withExt(s.withOnboarded(s.handleIncomingCount)))
-	m.HandleFunc("POST /likes/incoming/{id}/dismiss", s.withExt(s.withOnboarded(s.handleDismiss)))
+	// Лайк записи — на знакомства не влияет.
+	m.HandleFunc("POST /videos/{id}/like", s.withExt(s.withOnboarded(s.handleLikeVideo)))
+	m.HandleFunc("DELETE /videos/{id}/like", s.withExt(s.withOnboarded(s.handleUnlikeVideo)))
+	// «Хочу поиграть» — человеку; два встречных предложения — совпадение.
+	m.HandleFunc("POST /invites", s.withExt(s.withOnboarded(s.handleInvite)))
+	m.HandleFunc("DELETE /invites/{id}", s.withExt(s.withOnboarded(s.handleWithdraw)))
+	m.HandleFunc("GET /invites/incoming", s.withExt(s.withOnboarded(s.handleIncoming)))
+	m.HandleFunc("GET /invites/incoming/count", s.withExt(s.withOnboarded(s.handleIncomingCount)))
+	m.HandleFunc("POST /invites/incoming/{id}/dismiss", s.withExt(s.withOnboarded(s.handleDismiss)))
 	m.HandleFunc("GET /users/{id}/relation", s.withExt(s.withOnboarded(s.handleRelation)))
 	m.HandleFunc("GET /matches", s.withExt(s.withOnboarded(s.handleMatches)))
-	m.HandleFunc("GET /matches/{id}", s.withExt(s.withOnboarded(s.handleMatch)))
 }
 
-func (s *Server) handleLike(w http.ResponseWriter, r *http.Request, u profile.User) {
+func (s *Server) handleLikeVideo(w http.ResponseWriter, r *http.Request, u profile.User) {
+	if err := s.ext.Likes.LikeVideo(r.Context(), u.ID, r.PathValue("id")); err != nil {
+		s.fail(w, "like video", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleUnlikeVideo(w http.ResponseWriter, r *http.Request, u profile.User) {
+	if err := s.ext.Likes.UnlikeVideo(r.Context(), u.ID, r.PathValue("id")); err != nil {
+		s.fail(w, "unlike video", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request, u profile.User) {
 	var req struct {
 		ToUserID string `json:"to_user_id"`
-		VideoID  string `json:"video_id"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	res, err := s.ext.Likes.Like(r.Context(), u.ID, req.ToUserID, req.VideoID, s.now())
+	res, err := s.ext.Likes.Invite(r.Context(), u.ID, req.ToUserID, s.now())
 	if err != nil {
-		s.fail(w, "like", err)
+		s.fail(w, "invite", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"matched": res.Matched, "match_id": res.MatchID})
+	writeJSON(w, http.StatusOK, map[string]any{"mutual": res.Mutual})
 }
 
-func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request, u profile.User) {
-	if err := s.ext.Likes.Unlike(r.Context(), u.ID, r.PathValue("id")); err != nil {
-		s.fail(w, "unlike", err)
+func (s *Server) handleWithdraw(w http.ResponseWriter, r *http.Request, u profile.User) {
+	if err := s.ext.Likes.Withdraw(r.Context(), u.ID, r.PathValue("id")); err != nil {
+		s.fail(w, "withdraw invite", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -46,7 +64,7 @@ func (s *Server) handleUnlike(w http.ResponseWriter, r *http.Request, u profile.
 func (s *Server) handleIncoming(w http.ResponseWriter, r *http.Request, u profile.User) {
 	list, err := s.ext.Likes.Incoming(r.Context(), u.ID, s.now())
 	if err != nil {
-		s.fail(w, "incoming likes", err)
+		s.fail(w, "incoming invites", err)
 		return
 	}
 	type preview struct {
@@ -55,13 +73,13 @@ func (s *Server) handleIncoming(w http.ResponseWriter, r *http.Request, u profil
 		Peaks     json.RawMessage `json:"peaks"`
 	}
 	type item struct {
-		Author  profile.Author `json:"author"`
-		LikedAt time.Time      `json:"liked_at"`
-		Preview *preview       `json:"preview"`
+		Author    profile.Author `json:"author"`
+		InvitedAt time.Time      `json:"invited_at"`
+		Preview   *preview       `json:"preview"`
 	}
 	out := make([]item, len(list))
 	for i, in := range list {
-		out[i] = item{Author: in.Author, LikedAt: in.LikedAt}
+		out[i] = item{Author: in.Author, InvitedAt: in.InvitedAt}
 		if in.VideoType != "" {
 			out[i].Preview = &preview{in.VideoType, s.url(in.PosterKey), in.VideoPeaks}
 		}
@@ -80,7 +98,7 @@ func (s *Server) handleIncomingCount(w http.ResponseWriter, r *http.Request, u p
 
 func (s *Server) handleDismiss(w http.ResponseWriter, r *http.Request, u profile.User) {
 	if err := s.ext.Likes.Dismiss(r.Context(), u.ID, r.PathValue("id")); err != nil {
-		s.fail(w, "dismiss like", err)
+		s.fail(w, "dismiss invite", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -95,8 +113,8 @@ func (s *Server) handleRelation(w http.ResponseWriter, r *http.Request, u profil
 	writeJSON(w, http.StatusOK, rel)
 }
 
+// matchView — совпадение. Отдельного ID нет: для перехода в профиль достаточно ID второго музыканта.
 type matchView struct {
-	ID        string         `json:"id"`
 	Other     profile.Author `json:"other"`
 	CreatedAt time.Time      `json:"created_at"`
 }
@@ -109,16 +127,7 @@ func (s *Server) handleMatches(w http.ResponseWriter, r *http.Request, u profile
 	}
 	out := make([]matchView, len(list))
 	for i, m := range list {
-		out[i] = matchView{m.ID, m.Other, m.CreatedAt}
+		out[i] = matchView{m.Other, m.CreatedAt}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
-}
-
-func (s *Server) handleMatch(w http.ResponseWriter, r *http.Request, u profile.User) {
-	m, err := s.ext.Likes.GetMatch(r.Context(), u.ID, r.PathValue("id"), s.now())
-	if err != nil {
-		s.fail(w, "match", err)
-		return
-	}
-	writeJSON(w, http.StatusOK, matchView{m.ID, m.Other, m.CreatedAt})
 }

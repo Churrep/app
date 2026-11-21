@@ -83,7 +83,7 @@ export type Author = {
   looking_for: string
 }
 
-export type FeedItem = { video: Video; author: Author }
+export type FeedItem = { video: Video; author: Author; liked: boolean } // liked — я лайкнул эту запись
 
 export type Band = { id: string; name: string; genres: string[]; role: string }
 
@@ -162,15 +162,20 @@ export const fmtDuration = (ms: number) => {
 export const fmtDate = (iso: string) =>
   new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
 
-export type Match = { id: string; other: Author; created_at: string }
+// Совпадение — оба отправили друг другу «Хочу поиграть». Отдельного ID нет: в профиль ведёт other.id.
+export type Match = { other: Author; created_at: string }
 
-export type IncomingLike = {
+// Входящее предложение «Хочу поиграть».
+export type IncomingInvite = {
   author: Author
-  liked_at: string
+  invited_at: string
   preview: { type: 'video' | 'audio'; poster_url: string; peaks: number[] } | null
 }
 
-export type LikeResult = { matched: boolean; match_id: string }
+export type InviteResult = { mutual: boolean }
+
+// Отношение с другим музыкантом: я предложил, мне предложили, взаимно.
+export type Relation = { invited: boolean; invited_me: boolean; mutual: boolean }
 
 export const fmtAgo = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)

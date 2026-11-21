@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react'
 import { api } from '../api'
 
-// Сколько человек ждут ответа в «Тебя лайкнули». Общий счётчик для метки на вкладке «Совпадения» и списка входящих лайков.
+// Сколько человек ждут ответа в «Хотят поиграть» (входящие предложения). Общий счётчик для метки на вкладке
+// «Совпадения» и списка входящих. Лайки записей сюда не входят.
 let count = 0
 let initialized = false
 const listeners = new Set<() => void>()
@@ -9,7 +10,7 @@ const newLikeListeners = new Set<() => void>()
 
 export async function refreshIncoming() {
   try {
-    const r = await api<{ count: number }>('/likes/incoming/count')
+    const r = await api<{ count: number }>('/invites/incoming/count')
     const grew = initialized && r.count > count
     count = r.count
     initialized = true
