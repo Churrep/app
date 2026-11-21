@@ -62,6 +62,52 @@ func (s *Service) UnlikeVideo(ctx context.Context, userID, videoID string) error
 	return err
 }
 
+// LikedAmong — какие из записей videoIDs лайкнул userID (для сердечка в ленте записей профиля).
+func (s *Service) LikedAmong(ctx context.Context, userID string, videoIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(videoIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.db.Query(ctx, `SELECT video_id::text FROM likes WHERE user_id = $1 AND video_id = ANY($2::uuid[])`, userID, videoIDs)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, err
+}
+
+type VideoLike struct {
+	Author     profile.Author // кто лайкнул
+	LikedAt    time.Time
+	VideoID    string
+	VideoType  string
+	PosterKey  string
+	VideoPeaks []byte
+}
+
+// IncomingLikes — кому понравились мои записи. Видит только автор записей; публичных счётчиков нет.
+func (s *Service) IncomingLikes(ctx context.Context, userID string, now time.Time) ([]VideoLike, error) {
+	rows, err := s.db.Query(ctx, `SELECT `+profile.AuthorSQL("u")+`, l.created_at, v.id::text, v.type, v.poster_key, v.peaks
+		FROM likes l
+		JOIN videos v ON v.id = l.video_id
+		JOIN users u ON u.id = l.user_id
+		WHERE v.user_id = $1 AND v.deleted_at IS NULL AND u.deleted_at IS NULL
+		ORDER BY l.created_at DESC LIMIT 200`, userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (VideoLike, error) {
+		var l VideoLike
+		var a profile.AuthorScan
+		err := r.Scan(append(a.Dest(), &l.LikedAt, &l.VideoID, &l.VideoType, &l.PosterKey, &l.VideoPeaks)...)
+		l.Author = a.Author(now)
+		return l, err
+	})
+}
+
 // ---------- Предложения «Хочу поиграть» ----------
 
 type InviteResult struct {

@@ -51,7 +51,7 @@ export function ProfileView({ user, catalog }: { user: ProfileData; catalog: Cat
   return (
     <div className="profile">
       <div className="profile-head">
-        <Avatar name={user.name} url={user.photo_url} />
+        <span className="avatar-ring"><Avatar name={user.name} url={user.photo_url} /></span>
         <div>
           <h1>{user.name}</h1>
           {meta && <p className="muted">{meta}</p>}

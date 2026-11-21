@@ -12,6 +12,7 @@ func (s *Server) routesLikes(m *http.ServeMux) {
 	// Лайк записи — на знакомства не влияет.
 	m.HandleFunc("POST /videos/{id}/like", s.withExt(s.withOnboarded(s.handleLikeVideo)))
 	m.HandleFunc("DELETE /videos/{id}/like", s.withExt(s.withOnboarded(s.handleUnlikeVideo)))
+	m.HandleFunc("GET /likes/incoming", s.withExt(s.withOnboarded(s.handleIncomingLikes)))
 	// «Хочу поиграть» — человеку; два встречных предложения — совпадение.
 	m.HandleFunc("POST /invites", s.withExt(s.withOnboarded(s.handleInvite)))
 	m.HandleFunc("DELETE /invites/{id}", s.withExt(s.withOnboarded(s.handleWithdraw)))
@@ -36,6 +37,32 @@ func (s *Server) handleUnlikeVideo(w http.ResponseWriter, r *http.Request, u pro
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// previewView — превью записи для списков (входящие предложения и лайки).
+type previewView struct {
+	ID        string          `json:"id,omitempty"`
+	Type      string          `json:"type"`
+	PosterURL string          `json:"poster_url"`
+	Peaks     json.RawMessage `json:"peaks"`
+}
+
+func (s *Server) handleIncomingLikes(w http.ResponseWriter, r *http.Request, u profile.User) {
+	list, err := s.ext.Likes.IncomingLikes(r.Context(), u.ID, s.now())
+	if err != nil {
+		s.fail(w, "incoming likes", err)
+		return
+	}
+	type item struct {
+		Author  profile.Author `json:"author"`
+		LikedAt time.Time      `json:"liked_at"`
+		Video   previewView    `json:"video"`
+	}
+	out := make([]item, len(list))
+	for i, l := range list {
+		out[i] = item{l.Author, l.LikedAt, previewView{l.VideoID, l.VideoType, s.url(l.PosterKey), l.VideoPeaks}}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (s *Server) handleInvite(w http.ResponseWriter, r *http.Request, u profile.User) {
@@ -67,21 +94,16 @@ func (s *Server) handleIncoming(w http.ResponseWriter, r *http.Request, u profil
 		s.fail(w, "incoming invites", err)
 		return
 	}
-	type preview struct {
-		Type      string          `json:"type"`
-		PosterURL string          `json:"poster_url"`
-		Peaks     json.RawMessage `json:"peaks"`
-	}
 	type item struct {
 		Author    profile.Author `json:"author"`
 		InvitedAt time.Time      `json:"invited_at"`
-		Preview   *preview       `json:"preview"`
+		Preview   *previewView   `json:"preview"`
 	}
 	out := make([]item, len(list))
 	for i, in := range list {
 		out[i] = item{Author: in.Author, InvitedAt: in.InvitedAt}
 		if in.VideoType != "" {
-			out[i].Preview = &preview{in.VideoType, s.url(in.PosterKey), in.VideoPeaks}
+			out[i].Preview = &previewView{Type: in.VideoType, PosterURL: s.url(in.PosterKey), Peaks: in.VideoPeaks}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})

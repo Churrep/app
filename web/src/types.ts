@@ -174,6 +174,13 @@ export type IncomingInvite = {
 
 export type InviteResult = { mutual: boolean }
 
+// Лайк моей записи: кто и какую запись.
+export type IncomingLike = {
+  author: Author
+  liked_at: string
+  video: { id: string; type: 'video' | 'audio'; poster_url: string; peaks: number[] }
+}
+
 // Отношение с другим музыкантом: я предложил, мне предложили, взаимно.
 export type Relation = { invited: boolean; invited_me: boolean; mutual: boolean }
 

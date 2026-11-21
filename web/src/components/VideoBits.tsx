@@ -35,14 +35,13 @@ export function VideoGrid({ items, name, instrument, onOpen }: { items: Video[];
   )
 }
 
-// Просмотр записи. Для своих — сделать визиткой, поменять подпись, удалить.
-export function VideoModal({ video, name, instrument, own, onClose, onChanged }: {
+// Просмотр своей записи: сделать визиткой, поменять подпись, удалить. Чужие записи листаются лентой (UserFeed).
+export function VideoModal({ video, name, instrument, onClose, onChanged }: {
   video: Video
   name: string
   instrument: string
-  own?: boolean
   onClose: () => void
-  onChanged?: () => void
+  onChanged: () => void
 }) {
   const [caption, setCaption] = useState(video.caption)
   const [error, setError] = useState('')
@@ -56,7 +55,7 @@ export function VideoModal({ video, name, instrument, own, onClose, onChanged }:
     setError('')
     try {
       await fn()
-      onChanged?.()
+      onChanged()
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -82,10 +81,8 @@ export function VideoModal({ video, name, instrument, own, onClose, onChanged }:
         {video.status === 'processing' && <p className="note">Обрабатываем запись. Обычно это занимает до двух минут.</p>}
         {video.status === 'failed' && <p className="note error-text">{video.error || 'Не получилось обработать запись'}</p>}
         {video.status === 'ready' && <p className="small muted">{liveTake(video.recorded_at)}</p>}
-        {!own && video.caption && <p>{video.caption}</p>}
 
-        {own && (
-          <div className="stack">
+        <div className="stack">
             {video.status === 'ready' && (
               <>
                 <label className="field">
@@ -107,8 +104,7 @@ export function VideoModal({ video, name, instrument, own, onClose, onChanged }:
               Удалить
             </button>
             {error && <p className="error-text" role="alert">{error}</p>}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   )

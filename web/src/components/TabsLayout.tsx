@@ -46,7 +46,7 @@ export function TabsLayout() {
         </button>
       )}
       {toast && (
-        <button className="toast toast-action" onClick={() => { setToast(false); navigate('/invites') }}>
+        <button className="toast toast-action" onClick={() => { setToast(false); navigate('/matches?tab=invites') }}>
           Кто-то хочет с тобой поиграть — посмотреть
         </button>
       )}

@@ -33,7 +33,7 @@ export function MeScreen() {
         </section>
       </div>
       {open && (
-        <VideoModal video={items?.find((v) => v.id === open.id) ?? open} name={me.name} instrument={instrumentName(catalog, main)} own
+        <VideoModal video={items?.find((v) => v.id === open.id) ?? open} name={me.name} instrument={instrumentName(catalog, main)}
           onClose={() => setOpen(null)} onChanged={reload} />
       )}
     </main>

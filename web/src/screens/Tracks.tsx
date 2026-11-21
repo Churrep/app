@@ -52,15 +52,19 @@ export const responseText: Record<SpotResponse['status'], string> = {
 export function SpotCard({ spot, catalog }: { spot: Spot; catalog: Catalog }) {
   const meta = [nameOf(catalog.genres, spot.genre_id), `${spot.bpm} BPM`, spot.key].filter(Boolean).join(' · ')
   const counts = [plural(spot.responses_count, 'отклик', 'отклика', 'откликов'), spot.deadline ? `до ${fmtDate(spot.deadline)}` : ''].filter(Boolean).join(' · ')
+  // Карточка — ссылка на место; плеер минуса рядом, а не внутри ссылки (кнопку в ссылку вкладывать нельзя).
   return (
-    <Link to={`/tracks/${spot.id}`} className="card spot-card">
-      <span className="small muted">{spot.band.name}</span>
-      <strong className="spot-need">Нужен {nameOf(catalog.instruments, spot.instrument_id).toLowerCase()}</strong>
-      {spot.song_title && <span>«{spot.song_title}»</span>}
-      <span className="small muted">{meta}</span>
-      <span className="small">{spotStatus[spot.status] || counts}</span>
-      {spot.my_response && <span className="small accent-text">{responseText[spot.my_response.status]}</span>}
-    </Link>
+    <article className="card spot-card">
+      <Link to={`/tracks/${spot.id}`} className="spot-link">
+        <span className="small muted">{spot.band.name}</span>
+        <strong className="spot-need">Нужны: {nameOf(catalog.instruments, spot.instrument_id)}</strong>
+        {spot.song_title && <span>«{spot.song_title}»</span>}
+        <span className="small muted">{meta}</span>
+        <span className="small">{spotStatus[spot.status] || counts}</span>
+        {spot.my_response && <span className="small accent-text">{responseText[spot.my_response.status]}</span>}
+      </Link>
+      {spot.backing_url && <AudioPlayer src={spot.backing_url} peaks={spot.backing_peaks} durationMs={spot.backing_duration_ms} />}
+    </article>
   )
 }
 
@@ -386,7 +390,7 @@ export function SpotScreen() {
     body = (
       <>
         <p className="muted">{spot.band.name}</p>
-        <h1 className="title">Нужен {nameOf(catalog.instruments, spot.instrument_id).toLowerCase()}</h1>
+        <h1 className="title">Нужны: {nameOf(catalog.instruments, spot.instrument_id)}</h1>
         {spot.song_title && <p>«{spot.song_title}»</p>}
         <p className="muted">{[nameOf(catalog.genres, spot.genre_id), `${spot.bpm} BPM`, spot.key].filter(Boolean).join(' · ')}</p>
         {spot.description && <p>{spot.description}</p>}

@@ -275,6 +275,23 @@ func TestVideoLikesAndInvites(t *testing.T) {
 	expect(t, do(s, "POST", "/videos/"+v1+"/like", `{}`, boris), 400, "invalid") // свою — нельзя
 	expect(t, do(s, "POST", "/videos/cccccccc-cccc-4ccc-8ccc-cccccccccccc/like", `{}`, anya), 404, "not_found")
 
+	// Борис видит, кто лайкнул его записи; Аня своих входящих лайков не получает.
+	likes := jsonBody(t, do(s, "GET", "/likes/incoming", "", boris))["items"].([]any)
+	if len(likes) != 1 || likes[0].(map[string]any)["author"].(map[string]any)["id"] != anyaID ||
+		likes[0].(map[string]any)["video"].(map[string]any)["id"] != v2 {
+		t.Fatalf("incoming likes: %v", likes)
+	}
+	if n := len(jsonBody(t, do(s, "GET", "/likes/incoming", "", anya))["items"].([]any)); n != 0 {
+		t.Fatalf("anya has no incoming likes: %d", n)
+	}
+	// В профиле Бориса у Ани отмечена лайкнутая запись.
+	for _, it := range jsonBody(t, do(s, "GET", "/users/"+borisID+"/videos", "", anya))["items"].([]any) {
+		m := it.(map[string]any)
+		if m["liked"] != (m["id"] == v2) {
+			t.Fatalf("user videos liked flags: %v", m)
+		}
+	}
+
 	// Лайки записей предложений не создают.
 	if n := incoming(boris); n != 0 {
 		t.Fatalf("video likes must not create invites: %d", n)

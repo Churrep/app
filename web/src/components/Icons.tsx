@@ -37,3 +37,36 @@ export const OfflineIcon = (p: SVGProps<SVGSVGElement>) => (
 export const ShareIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M12 3v13M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
 )
+
+// Иллюстрация для пустых экранов: кассета с музыкальной нотой (тёплые тона, без внешних картинок).
+export const CassetteArt = (p: SVGProps<SVGSVGElement>) => (
+  <svg width={150} height={110} viewBox="0 0 150 110" aria-hidden {...p}>
+    <defs>
+      <linearGradient id="cas-body" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor="#e9a25c" />
+        <stop offset="1" stopColor="#b8642c" />
+      </linearGradient>
+      <filter id="cas-glow" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="6" />
+      </filter>
+    </defs>
+    <g transform="rotate(-10 75 55)">
+      <rect x="18" y="24" width="114" height="68" rx="10" fill="#ff7a3d" opacity="0.35" filter="url(#cas-glow)" />
+      <rect x="18" y="24" width="114" height="68" rx="10" fill="url(#cas-body)" />
+      <rect x="28" y="32" width="94" height="34" rx="6" fill="#f6dcb8" />
+      <rect x="36" y="40" width="78" height="18" rx="9" fill="#3b2418" />
+      <circle cx="51" cy="49" r="6" fill="#f6dcb8" />
+      <circle cx="99" cy="49" r="6" fill="#f6dcb8" />
+      <circle cx="51" cy="49" r="2.2" fill="#3b2418" />
+      <circle cx="99" cy="49" r="2.2" fill="#3b2418" />
+      <path d="M44 92 L52 76 H98 L106 92" fill="#8e4a20" />
+      <circle cx="62" cy="85" r="2.5" fill="#3b2418" />
+      <circle cx="88" cy="85" r="2.5" fill="#3b2418" />
+    </g>
+    <g fill="#ffb27a">
+      <circle cx="124" cy="28" r="5" />
+      <circle cx="141" cy="24" r="5" />
+      <path d="M127.5 28V10l17-4v18" stroke="#ffb27a" strokeWidth="3" fill="none" />
+    </g>
+  </svg>
+)

@@ -32,9 +32,10 @@ export function ErrorState({ error, onRetry, full }: { error: unknown; onRetry: 
   )
 }
 
-export function Empty({ title, text, children }: { title: string; text?: string; children?: ReactNode }) {
+export function Empty({ title, text, art, children }: { title: string; text?: string; art?: ReactNode; children?: ReactNode }) {
   return (
     <div className="state">
+      {art && <div className="state-art">{art}</div>}
       <h2>{title}</h2>
       {text && <p className="muted">{text}</p>}
       {children}

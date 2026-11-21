@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { api, ApiError, errorText } from '../api'
 import { MatchOverlay } from '../components/LikeBits'
 import { Header } from '../components/Header'
@@ -7,8 +7,8 @@ import { ProfileView } from '../components/ProfileView'
 import { Empty, ErrorState, Loading } from '../components/States'
 import { useMe } from '../session'
 import { refreshIncoming } from '../lib/incoming'
-import type { InviteResult, PublicUser, Relation, Video } from '../types'
-import { AudioCover, instrumentName, useVideos, VideoGrid, VideoModal } from '../components/VideoBits'
+import type { InviteResult, PublicUser, Relation } from '../types'
+import { instrumentName, useVideos, VideoGrid } from '../components/VideoBits'
 
 export function UserProfile() {
   const { id = '' } = useParams()
@@ -40,8 +40,8 @@ export function UserProfile() {
   else
     body = (
       <>
-        <UserVideos user={user} />
         <ProfileView user={user} catalog={catalog} />
+        <UserVideos user={user} />
         <InviteAction user={user} />
       </>
     )
@@ -54,27 +54,20 @@ export function UserProfile() {
   )
 }
 
-// Видео-визитка сверху с явной кнопкой Play, ниже — сетка остальных записей.
+// Записи — внизу профиля. По нажатию открываются как лента, начиная с выбранной (визитка — первой).
 function UserVideos({ user }: { user: PublicUser }) {
   const { catalog } = useMe()
+  const navigate = useNavigate()
   const { items } = useVideos(`/users/${encodeURIComponent(user.id)}/videos`)
-  const [open, setOpen] = useState<Video | null>(null)
   const inst = instrumentName(catalog, user.instruments.find((i) => i.is_main)?.id ?? '')
-  if (!items) return null
-  if (items.length === 0) return <p className="note">Пока нет записей</p>
-  const pinned = items.find((v) => v.is_pinned)
-  const rest = items.filter((v) => v !== pinned)
   return (
-    <>
-      {pinned && (
-        <button className="pinned-video" onClick={() => setOpen(pinned)} aria-label="Смотреть видео-визитку">
-          {pinned.type === 'video' ? <img src={pinned.poster_url} alt="" /> : <AudioCover peaks={pinned.peaks} name={user.name} instrument={inst} />}
-          <span className="play-overlay">▶</span>
-        </button>
+    <section className="stack">
+      <h3 className="section-title">Записи</h3>
+      {items && items.length === 0 && <p className="muted">Пока нет записей</p>}
+      {items && items.length > 0 && (
+        <VideoGrid items={items} name={user.name} instrument={inst} onOpen={(v) => navigate(`/users/${user.id}/videos/${v.id}`)} />
       )}
-      {rest.length > 0 && <VideoGrid items={rest} name={user.name} instrument={inst} onOpen={setOpen} />}
-      {open && <VideoModal video={open} name={user.name} instrument={inst} onClose={() => setOpen(null)} />}
-    </>
+    </section>
   )
 }
 

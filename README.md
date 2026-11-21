@@ -84,6 +84,7 @@ TEST_DATABASE_URL='postgres://music:music@localhost:5432/music_test?sslmode=disa
 | PATCH | `/responses/{id}` | `{"status":"invited"\|"rejected"}` |
 | GET | `/me/responses` | мои отклики |
 | POST/DELETE | `/videos/{id}/like` | лайк записи и его снятие; на знакомства не влияет |
+| GET | `/likes/incoming` | кто лайкнул мои записи (видно только автору, публичных счётчиков нет) |
 | POST | `/invites` | `{"to_user_id"}` — «Хочу поиграть»; ответ `{"mutual"}` — есть ли встречное (до 50 новых в сутки) |
 | DELETE | `/invites/{user_id}` | отменить своё предложение (после взаимности — 409) |
 | GET | `/invites/incoming`, `/invites/incoming/count` | кто предложил мне и я ещё не ответил |

@@ -312,7 +312,25 @@ func (s *Server) handleUserVideos(w http.ResponseWriter, r *http.Request, u prof
 		s.fail(w, "user videos", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": s.videoViews(list)})
+	// liked — лайкнул ли зритель запись: записи в профиле листаются как лента, с тем же сердечком.
+	ids := make([]string, len(list))
+	for i, v := range list {
+		ids[i] = v.ID
+	}
+	liked, err := s.ext.Likes.LikedAmong(r.Context(), u.ID, ids)
+	if err != nil {
+		s.fail(w, "user videos likes", err)
+		return
+	}
+	type item struct {
+		videoView
+		Liked bool `json:"liked"`
+	}
+	out := make([]item, len(list))
+	for i, v := range list {
+		out[i] = item{s.videoView(v), liked[v.ID]}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (s *Server) handleFeed(w http.ResponseWriter, r *http.Request, u profile.User) {
