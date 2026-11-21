@@ -11,6 +11,7 @@ import (
 type User struct {
 	Login    string
 	Password string
+	Level    int
 }
 
 var (
@@ -55,4 +56,20 @@ func hashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(hash), nil
+}
+
+func Login(login string, password string) (*User, error) {
+	key := strings.ToLower(strings.TrimSpace(login))
+
+	mu.RLock()
+	u, ok := users[key]
+	mu.RUnlock()
+	if !ok {
+		return nil, ErrInvalidCredentials
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
+		return nil, ErrInvalidCredentials
+	}
+	return u, nil
 }

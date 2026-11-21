@@ -1,0 +1,195 @@
+export type Instrument = { id: string; is_main: boolean }
+
+export type Onboarding = { complete: boolean; next_step?: string }
+
+export type Theme = 'dark' | 'light'
+
+export type Me = {
+  id: string
+  phone?: string
+  telegram_username?: string
+  name: string
+  birth_date?: string
+  age?: number
+  district: string
+  photo_url: string
+  instruments: Instrument[]
+  level?: number
+  level_description?: string
+  genres: string[]
+  goals: string[]
+  looking_for?: string
+  looking_for_instrument?: string
+  show_age: boolean
+  show_district: boolean
+  theme: Theme
+  consent_at?: string
+  onboarding: Onboarding
+  created_at: string
+}
+
+export type PublicUser = {
+  id: string
+  name: string
+  age?: number
+  district?: string
+  photo_url: string
+  instruments: Instrument[]
+  level: number
+  level_description: string
+  genres: string[]
+  goals: string[]
+  looking_for: string
+  looking_for_instrument?: string
+  dm_restricted: boolean
+}
+
+export type Item = { id: string; name: string }
+
+export type Catalog = {
+  instruments: Item[]
+  genres: Item[]
+  goals: Item[]
+  looking_for: Item[]
+  levels: { value: number; description: string }[]
+  city: string
+  max_genres: number
+  video_tags: Item[]
+  venue_types: Item[]
+  equipment: Item[]
+}
+
+export type Video = {
+  id: string
+  type: 'video' | 'audio'
+  tag: string
+  caption: string
+  duration_ms: number
+  media_url: string
+  poster_url: string
+  peaks: number[]
+  is_pinned: boolean
+  status: 'processing' | 'ready' | 'failed'
+  error?: string
+  recorded_at: string
+  created_at: string
+}
+
+export type Author = {
+  id: string
+  name: string
+  photo_url: string
+  main_instrument: string
+  level: number
+  genres: string[]
+  district?: string
+  looking_for: string
+}
+
+export type FeedItem = { video: Video; author: Author }
+
+export type Band = { id: string; name: string; genres: string[]; role: string }
+
+export type Spot = {
+  id: string
+  band: { id: string; name: string }
+  instrument_id: string
+  song_title: string
+  backing_url: string
+  backing_peaks: number[]
+  backing_duration_ms: number
+  bpm: number
+  key: string
+  genre_id: string
+  description: string
+  deadline: string | null
+  status: 'processing' | 'open' | 'expired' | 'closed' | 'failed'
+  error?: string
+  created_at: string
+  responses_count: number
+  is_member: boolean
+  my_response: { id: string; status: SpotResponse['status'] } | null
+}
+
+export type SpotResponse = {
+  id: string
+  spot_id: string
+  track_url: string
+  mix_url: string
+  track_peaks: number[]
+  track_duration_ms: number
+  offset_ms: number
+  start_ms: number
+  gain_backing: number
+  gain_track: number
+  status: 'processing' | 'sent' | 'invited' | 'rejected' | 'failed'
+  error?: string
+  created_at: string
+  author?: Author
+  spot?: Spot
+}
+
+export type Venue = {
+  id: string
+  name: string
+  type: string
+  address: string
+  lat: number
+  lon: number
+  district: string
+  price_min: number | null
+  price_max: number | null
+  opening_hours: Record<string, string[]>
+  open_now: boolean | null
+  rooms_count: number | null
+  equipment: string[]
+  phones: string[]
+  telegram: string
+  website: string
+  photos: string[]
+  verified_at: string | null
+}
+
+export type MePatch = Partial<{
+  name: string
+  birth_date: string
+  consent: boolean
+  district: string
+  instruments: Instrument[]
+  level: number
+  genres: string[]
+  goals: string[]
+  looking_for: string
+  looking_for_instrument: string
+  show_age: boolean
+  show_district: boolean
+  theme: Theme
+}>
+
+export const nameOf = (items: Item[], id?: string) => items.find((i) => i.id === id)?.name ?? id ?? ''
+
+export const fmtDuration = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+export const fmtDate = (iso: string) =>
+  new Date(iso.length === 10 ? iso + 'T00:00:00' : iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+
+export type Match = { id: string; other: Author; created_at: string; dm_restricted: boolean }
+
+export type IncomingLike = {
+  author: Author
+  liked_at: string
+  preview: { type: 'video' | 'audio'; poster_url: string; peaks: number[] } | null
+}
+
+export type LikeResult = { matched: boolean; match_id: string }
+
+export const fmtAgo = (iso: string) => {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
+  if (m < 1) return 'только что'
+  if (m < 60) return `${m} мин назад`
+  if (m < 24 * 60) return `${Math.round(m / 60)} ч назад`
+  return fmtDate(iso)
+}
