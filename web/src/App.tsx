@@ -56,7 +56,6 @@ export default function App() {
           <Route path="/me/settings/audio" element={<RequireOnboarded><AudioCalibration /></RequireOnboarded>} />
           <Route path="/users/:id" element={<RequireOnboarded><UserProfile /></RequireOnboarded>} />
           <Route path="/invites" element={<RequireOnboarded><Invites /></RequireOnboarded>} />
-          <Route path="/likes" element={<Navigate to="/invites" replace />} />
           <Route path="/record" element={<RequireOnboarded><Record /></RequireOnboarded>} />
           <Route path="/tracks/new" element={<RequireOnboarded><NewSpot /></RequireOnboarded>} />
           <Route path="/tracks/:id" element={<RequireOnboarded><SpotScreen /></RequireOnboarded>} />

@@ -241,8 +241,6 @@ input[type='range'] { width: 100%; height: 40px; accent-color: var(--accent); }
 .warn-text { color: #f5b041; }
 .ok-text { color: #4bd48a; }
 .danger { color: var(--danger) !important; }
-.plain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.hours li { display: flex; justify-content: space-between; gap: 12px; }
 .segmented.three { grid-template-columns: repeat(3, 1fr); }
 .segmented button { padding: 0 6px; font-size: 14px; }
 .author-row { display: flex; gap: 12px; align-items: center; color: inherit; text-decoration: none; }
@@ -321,7 +319,7 @@ input[type='range'] { width: 100%; height: 40px; accent-color: var(--accent); }
 .feed-top > * { pointer-events: auto; }
 .feed-title { font-size: 20px; font-weight: 750; }
 .feed-filter { background: rgba(0, 0, 0, 0.4); color: #fff; border-color: rgba(255, 255, 255, 0.3); }
-.feed-filter.on, .map-chip.on { border-color: var(--accent); }
+.feed-filter.on { border-color: var(--accent); }
 .feed-list { height: 100%; overflow-y: scroll; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; }
 .feed-list::-webkit-scrollbar { display: none; }
 .feed-card { position: relative; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; overflow: hidden; }

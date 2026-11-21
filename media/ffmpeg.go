@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,10 +13,9 @@ import (
 	"time"
 )
 
-// FFmpeg вызывает ffmpeg/ffprobe как внешние программы.
+// FFmpeg вызывает ffmpeg как внешнюю программу.
 type FFmpeg struct {
-	Bin   string // путь к ffmpeg
-	Probe string // путь к ffprobe
+	Bin string // путь к ffmpeg
 }
 
 var ErrNoFFmpeg = errors.New("ffmpeg не найден")
@@ -25,9 +23,6 @@ var ErrNoFFmpeg = errors.New("ffmpeg не найден")
 func (f FFmpeg) Check() error {
 	if _, err := exec.LookPath(f.Bin); err != nil {
 		return fmt.Errorf("%w: %s", ErrNoFFmpeg, f.Bin)
-	}
-	if _, err := exec.LookPath(f.Probe); err != nil {
-		return fmt.Errorf("%w: %s", ErrNoFFmpeg, f.Probe)
 	}
 	return nil
 }
@@ -44,43 +39,6 @@ func (f FFmpeg) run(ctx context.Context, args ...string) error {
 		return fmt.Errorf("ffmpeg: %w: %s", err, msg)
 	}
 	return nil
-}
-
-type ProbeResult struct {
-	Duration time.Duration
-	HasVideo bool
-	HasAudio bool
-}
-
-func (f FFmpeg) ProbeFile(ctx context.Context, path string) (ProbeResult, error) {
-	out, err := exec.CommandContext(ctx, f.Probe, "-v", "error", "-print_format", "json", "-show_format", "-show_streams", path).Output()
-	if err != nil {
-		return ProbeResult{}, fmt.Errorf("ffprobe: %w", err)
-	}
-	var data struct {
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-		Streams []struct {
-			CodecType string `json:"codec_type"`
-		} `json:"streams"`
-	}
-	if err := json.Unmarshal(out, &data); err != nil {
-		return ProbeResult{}, err
-	}
-	var r ProbeResult
-	if sec, err := strconv.ParseFloat(data.Format.Duration, 64); err == nil {
-		r.Duration = time.Duration(sec * float64(time.Second))
-	}
-	for _, s := range data.Streams {
-		switch s.CodecType {
-		case "video":
-			r.HasVideo = true
-		case "audio":
-			r.HasAudio = true
-		}
-	}
-	return r, nil
 }
 
 // TranscodeVideo приводит запись с любого телефона (MP4/AAC с iPhone, WebM/Opus с Android)

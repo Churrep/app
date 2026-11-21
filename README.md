@@ -14,7 +14,7 @@ docker compose up -d --build app  # пересобрать сервер посл
 
 Для существующего тома, созданного с PostGIS, укажи `POSTGRES_IMAGE=postgis/postgis:17-3.5` в файле `.env` рядом с docker-compose.yml.
 
-Без Docker (нужны ffmpeg и ffprobe в PATH, иначе загрузки отключены):
+Без Docker (нужен ffmpeg в PATH, иначе загрузки отключены):
 
 ```sh
 docker compose up -d --wait postgres
@@ -22,7 +22,7 @@ DATABASE_URL='postgres://music:music@localhost:5432/music?sslmode=disable' \
   SMS_LOG_CODES=true COOKIE_SECURE=false go run .
 ```
 
-Для видео и дорожек нужны `ffmpeg` и `ffprobe` в PATH (или пути в `FFMPEG`/`FFPROBE`). Без них сервер
+Для видео и дорожек нужен `ffmpeg` в PATH (или путь в `FFMPEG`). Без него сервер
 работает, но загрузки отвечают 503. Файлы хранятся на диске в `MEDIA_DIR`; для прода — S3-совместимое хранилище в РФ.
 
 Миграции из `db/migrations` применяются сами при старте. Без `DATABASE_URL` сервер работает на памяти
@@ -52,7 +52,7 @@ TEST_DATABASE_URL='postgres://music:music@localhost:5432/music_test?sslmode=disa
 | `MEDIA_DIR` | `data/media` | где хранить загруженные и обработанные файлы |
 | `MEDIA_SECRET` | случайный | ключ подписи ссылок на файлы; без него ссылки ломаются при перезапуске |
 | `MEDIA_BASE_URL` | `/api/media` | префикс ссылок на файлы для фронтенда |
-| `FFMPEG`, `FFPROBE` | `ffmpeg`, `ffprobe` | пути к программам |
+| `FFMPEG` | `ffmpeg` | путь к ffmpeg |
 
 Фронтенд должен ходить в API с того же домена (в разработке — через proxy в Vite), CORS не настроен.
 Все POST/PATCH/DELETE — только с `Content-Type: application/json`, загрузки файлов — `multipart/form-data`

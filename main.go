@@ -139,7 +139,7 @@ func newMedia(logger *slog.Logger) (*media.Media, error) {
 		secret = make([]byte, 32)
 		rand.Read(secret)
 	}
-	ff := media.FFmpeg{Bin: env("FFMPEG", "ffmpeg"), Probe: env("FFPROBE", "ffprobe")}
+	ff := media.FFmpeg{Bin: env("FFMPEG", "ffmpeg")}
 	m := &media.Media{
 		Storage: st,
 		Signer:  &media.Signer{Secret: secret, Base: env("MEDIA_BASE_URL", "/api/media"), TTL: 24 * time.Hour, Now: time.Now},

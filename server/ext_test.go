@@ -28,7 +28,7 @@ func testExtensions(t *testing.T, pool *pgxpool.Pool) *Extensions {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ff := media.FFmpeg{Bin: "ffmpeg-missing-for-tests", Probe: "ffprobe-missing-for-tests"}
+	ff := media.FFmpeg{Bin: "ffmpeg-missing-for-tests"}
 	m := &media.Media{
 		Storage: st,
 		Signer:  &media.Signer{Secret: []byte("test"), Base: "/api/media", TTL: time.Hour, Now: time.Now},
